@@ -1,0 +1,307 @@
+# Sign in with Dash: Product Specification
+
+**Status:** Initial specification  
+**Date:** 2026-07-27  
+**Initial network:** Dash Platform testnet
+
+## 1. Purpose
+
+Sign in with Dash demonstrates that an ordinary website can create and
+authenticate a local account using a Dash Platform identity and a DPNS name
+instead of a password.
+
+The project should also produce reusable protocol and verifier components for
+other applications. A successful demo is not enough if each future website
+would need to invent its own incompatible or unsafe login flow.
+
+## 2. Product principles
+
+- Signing in should take one click, one scan, one clear approval, and no typing
+  in the normal cross-device flow.
+- The relying website explicitly selects `identity_bound` or `name_bound`
+  account ownership; the protocol never infers ownership semantics.
+- In `identity_bound`, the immutable Dash identity ID is the provider
+  identifier and a DPNS name is a verified public handle.
+- In `name_bound`, the normalized DPNS name is the provider identifier and its
+  current resolved identity controls the account.
+- The website never receives the recovery phrase or a private key.
+- The app never signs an opaque or arbitrary message.
+- A login must not create a Dash Platform state transition or consume credits.
+- Testnet and mainnet must never be visually confusable.
+- Authentication must remain optional alongside conventional login providers
+  when a consuming website wants more than one method.
+- SIWD authenticates a principal, which may be a person, organization, service,
+  or autonomous agent; it does not require or imply proof of personhood.
+
+## 3. Users and components
+
+### End user
+
+Owns a Dash recovery phrase associated with one or more Platform identities and
+DPNS names. Uses the phone app to approve authentication requests.
+
+### Relying website
+
+Runs the demo or integrates the verifier package. It owns its local accounts,
+authorization rules, application data, sessions, and recovery policy.
+
+### Authenticator app
+
+Imports identity material, discovers identities and names, scans or opens login
+requests, obtains explicit approval, signs the canonical challenge, and sends
+the response. The first implementation may be a bounded feature inside an
+existing Dash wallet rather than a separate application.
+
+### Dash Platform
+
+Provides the current identity, public authentication keys, disabled-key state,
+and DPNS name-to-identity relationship.
+
+## 4. User journeys
+
+### 4.1 First setup
+
+1. Install the test APK from a documented release.
+2. Confirm that the app is operating on testnet.
+3. Enter or paste a testnet recovery phrase in a protected screen.
+4. The app validates the phrase and derives standard Dash identity keys.
+5. The app discovers matching Platform identities and DPNS names.
+6. The user chooses which identity/name may be used for website login.
+7. The app discards the phrase from UI state and retains only the minimum
+   encrypted authentication material needed for later signing.
+8. The app requires device authentication before it can approve a signature.
+
+No phrase is transmitted for discovery. Logs and crash reports must exclude it.
+
+### 4.2 Create a website account
+
+1. Select **Create account with Dash**.
+2. Scan the displayed QR code or open/copy the link.
+3. Review the website domain, `register` action, selected Dash name, and expiry.
+4. Approve locally.
+5. The website verifies the response and current Platform state.
+6. If the identity is not already linked, create the local account and session.
+7. Display the authenticated Dash name and abbreviated identity ID.
+
+The website may collect application-specific profile information afterward,
+but Dash authentication itself does not require email or legal identity.
+It may assign a separate site-local handle for all public display and content.
+That hides the Dash name from ordinary visitors but not from the website, which
+still receives the SIWD identity and name.
+
+### 4.3 Return login
+
+The flow is the same, with action `login`.
+
+- Under `identity_bound`, the website finds the local account by network plus
+  Dash identity ID. A transferred preferred name does not transfer the account.
+- Under `name_bound`, the website finds the local account by network plus
+  normalized DPNS name and requires the signer to be the identity to which the
+  name currently resolves.
+
+The demo site implements and tests `identity_bound` first.
+
+### 4.4 Same-device login
+
+On a phone, selecting **Sign in with Dash** opens an application link. After
+approval, the authenticator returns to the browser and the browser completes
+the session. The copied HTTPS request URL remains usable when deep linking is
+unavailable.
+
+### 4.5 Account linking
+
+Linking a Dash identity to an already authenticated conventional account is a
+distinct `link` action. It requires:
+
+- a fresh authenticated website session;
+- a fresh Dash approval;
+- an explicit confirmation showing both accounts;
+- rejection if that Dash identity is already linked elsewhere.
+
+Account linking must never be inferred from matching display names.
+
+### 4.6 Name-bound ownership transfer
+
+When a `name_bound` account's DPNS name resolves to a different identity, a
+successful login by the new identity is an ownership transfer, not an ordinary
+new-device login. The website must atomically:
+
+- verify fresh, preferably proved, finalized DPNS state;
+- record the former and new controlling identity IDs and state reference;
+- rebind the provider to the new controlling identity;
+- revoke all former-controller sessions, pending requests, API credentials,
+  linked login methods, and recovery paths;
+- transfer all current rights attached to account ownership; and
+- preserve historical attribution and an auditable transfer record.
+
+The former controller's cooperation is not required after a valid DPNS
+transfer. A website must document any records or obligations that are
+historical rather than transferable.
+
+### 4.7 Authenticator-initiated login
+
+An early post-MVP extension may let the user select a known website in the
+authenticator and choose **Open and sign in**. The app opens a verified HTTPS
+login-start URL, receives a structured request, obtains approval, and returns
+the user to the website.
+
+This is not required for the first identity-bound demonstration. Version 1
+must avoid assumptions that would prevent it, including requiring every
+request to originate from a pre-existing browser page or QR scan.
+
+## 5. Local account model
+
+Minimum records:
+
+### User
+
+- internal random user ID;
+- creation and last-login timestamps;
+- application profile fields, if any.
+
+### Authentication provider
+
+- user ID;
+- provider type `dash`;
+- Dash network;
+- binding policy: `identity_bound` or `name_bound`;
+- current Dash identity ID;
+- preferred DPNS name;
+- normalized DPNS name used during verification;
+- last verified identity key ID;
+- last Platform verification time.
+
+The unique provider key depends on the stored binding policy:
+
+- `identity_bound`: `(network, identity_id)`;
+- `name_bound`: `(network, normalized_dpns_name)`.
+
+Changing an existing provider's binding policy requires an explicit,
+separately designed migration; it must never happen as a side effect of login.
+Name-bound providers also retain controller history and the Platform state
+reference for each ownership transition.
+
+### Authentication request
+
+- server-generated request ID;
+- hash of the random nonce;
+- relying-party origin;
+- action;
+- binding policy;
+- issuance and expiration timestamps;
+- status;
+- optional authenticated linking-session binding;
+- response metadata needed for a security audit.
+
+Raw nonces should not be retained longer than the request lifetime. Completed,
+rejected, expired, and cancelled requests are terminal.
+
+## 6. Functional requirements
+
+### Website
+
+- Issue registration, login, and link challenges.
+- Render QR codes without third-party QR services.
+- Offer an accessible copy-link control and manual status refresh.
+- Update automatically using polling initially; allow SSE later.
+- Verify response signatures and Platform identity/name state.
+- Enforce the request's stored account-binding policy.
+- Detect and process name-bound ownership changes atomically.
+- Revoke former-controller access completely after a name-bound transfer.
+- Revalidate name-bound control before sensitive actions and keep sessions
+  short-lived enough to bound stale-controller access between Platform checks.
+- Enforce one-time consumption atomically.
+- Use secure, HTTP-only, same-site session cookies.
+- Provide logout and provider-unlink flows.
+- Explain when the phone app is required.
+- Provide a simulator only in an unmistakable development mode.
+
+### Signer host
+
+- Obtain identities, DPNS names, and eligible identity keys through the host
+  wallet's protected facilities.
+- Scan QR codes and accept verified application links.
+- Parse and validate requests before showing approval UI.
+- Display domain, action, requested disclosures, network, and expiry.
+- For cross-device requests, warn the user to approve only a login they
+  personally started for the displayed domain moments ago.
+- Select among eligible identities/names.
+- Require platform-appropriate user authentication for each signature.
+- Sign only the protocol's canonical digest.
+- Remove secrets from clipboard and UI memory as promptly as practical.
+- Provide no arbitrary-message or opaque-payload signing entry point.
+
+The initial Android integration uses Android links, camera, and device
+authentication. Those mechanisms are host-specific and must not appear in the
+wire protocol.
+
+### Portability
+
+- Specify all signed data and protocol fields independently of programming
+  language, UI toolkit, operating system, and transport-launch mechanism.
+- Publish byte-exact positive and negative conformance vectors.
+- Define equivalent cross-device QR and same-device link flows without
+  requiring Android App Links specifically.
+- Permit native secure storage and approval mechanisms on Android, iOS,
+  Windows, macOS, and Linux.
+- Keep server verification independent of which conforming wallet or
+  authenticator produced the response.
+- A separately packaged Android authenticator must operate on GrapheneOS
+  without Google Play services.
+- Standalone core functionality must not depend on Google account sign-in,
+  Play Integrity, Firebase-only services, or Play-only delivery.
+- Keep a standalone build compatible with direct signed APK distribution and
+  F-Droid-compatible free/open-source build requirements.
+
+These standalone distribution requirements do not apply to the experimental
+official Dash Android wallet fork, which is a demo and upstream-integration
+candidate rather than a separately promoted SIWD application.
+
+### Verifier package
+
+- Framework-neutral TypeScript interfaces for request creation and response
+  verification.
+- Constant-time comparisons where applicable.
+- Pluggable challenge storage.
+- Pluggable Platform lookup/proof provider.
+- Canonical encoding shared with Android.
+- Stable error codes that do not leak account existence.
+- Test vectors and negative tests.
+
+## 7. Non-goals for the first release
+
+- Dash payments or balance display.
+- Creating identities or registering names.
+- Identity top-ups, transfers, withdrawals, or key updates.
+- Mainnet operation.
+- Acting as a general Dash wallet.
+- Implementing unattended agent signing in the human MVP authenticator.
+- Authenticator-initiated trusted-site browsing and session-management UI in
+  the first identity-bound demonstration.
+- Requiring a single shared application codebase across Android, iOS, and
+  desktop.
+- Arbitrary text, transaction, document, or file signing.
+- Custodial key backup or cloud synchronization.
+- Claiming that a DPNS name proves a legal-world identity.
+- Claiming that a Dash identity proves a unique human or excluding autonomous
+  agents merely because they are not human.
+- Replacing website authorization, moderation, or account recovery policy.
+
+## 8. Success criteria
+
+The first milestone succeeds when:
+
+- a testnet identity can be restored in the Android app;
+- its DPNS name and appropriate active authentication key are discovered;
+- a desktop browser displays a short-lived QR login;
+- the app scans, validates, displays, and signs it after local approval;
+- the website verifies the signature and live identity/name relationship;
+- the browser session completes without manual code entry;
+- replay, expiry, wrong origin, wrong network, wrong name, altered request,
+  wrong binding policy, disabled key, and duplicate linking tests all fail
+  safely;
+- identity-bound name changes do not transfer accounts;
+- name-bound transfers move account control and rights to the new identity
+  while revoking the former controller;
+- no phrase or private key appears in logs, network traces, or persisted
+  plaintext storage.

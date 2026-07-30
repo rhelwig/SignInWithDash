@@ -1,0 +1,38 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+*.apk
+*.aab
+
+# Local configuration
+.env
+.env.*
+!.env.example
+local.properties
+*.local
+
+# Secrets and wallet material
+*.wif
+*.mnemonic
+*.seed
+*.keystore
+*.jks
+secrets/
+wallet-data/
+
+# Databases, logs, and test captures
+*.db
+*.db-shm
+*.db-wal
+*.log
+captures/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.obsidian/
+*.iml
+.DS_Store
