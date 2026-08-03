@@ -248,8 +248,8 @@ Mainnet remains a separate gated decision.
 6. Optional later: public deploy to `dashlogin.ronhelwig.com` after local soak;
    align SIWD URI scheme with wallet maintainers.
 
-Next build slice: M2 Platform verification and/or more adversarial tests on the
-demo.
+Next build slice: continue standalone authenticator (QR, phrase import, A7
+sideload) and/or M2 Platform verification on the demo site.
 
 ## 5. Verification strategy
 
