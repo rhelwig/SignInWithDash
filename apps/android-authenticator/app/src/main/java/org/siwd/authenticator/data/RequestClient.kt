@@ -4,9 +4,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import org.siwd.protocol.Action
 import org.siwd.protocol.AuthRequest
-import org.siwd.protocol.BindingPolicy
 import org.siwd.protocol.CanonicalInput
 import org.siwd.protocol.Network
 import org.siwd.protocol.RequestParse
@@ -40,9 +38,14 @@ class RequestClient(
 
     fun signAndRespond(
         authRequest: AuthRequest,
-        identity: DevFixtures.Identity,
-        dpnsName: String = identity.fullDpnsName,
+        identityId: String,
+        dpnsName: String,
+        keyId: Int,
+        privateKey: ByteArray,
     ): String {
+        require(authRequest.network == Network.TESTNET) {
+            "This app is testnet-only"
+        }
         val canon =
             CanonicalInput(
                 network = authRequest.network,
@@ -53,15 +56,11 @@ class RequestClient(
                 nonce = authRequest.nonce,
                 issuedAt = authRequest.issuedAt,
                 expiresAt = authRequest.expiresAt,
-                identityId = identity.identityId,
+                identityId = identityId,
                 dpnsName = dpnsName,
-                keyId = identity.keyId,
+                keyId = keyId,
             )
-        // Refuse mainnet in this testnet build
-        require(authRequest.network == Network.TESTNET) {
-            "This app is testnet-only"
-        }
-        val signature = SiwdSigner.signCanonicalBase64Url(canon, identity.privateKey)
+        val signature = SiwdSigner.signCanonicalBase64Url(canon, privateKey)
         val json =
             """
             {
@@ -70,9 +69,9 @@ class RequestClient(
               "requestId": ${jsonStr(authRequest.requestId)},
               "network": ${jsonStr(authRequest.network.jsonName())},
               "bindingPolicy": ${jsonStr(authRequest.bindingPolicy.jsonName())},
-              "identityId": ${jsonStr(identity.identityId)},
+              "identityId": ${jsonStr(identityId)},
               "dpnsName": ${jsonStr(dpnsName)},
-              "keyId": ${identity.keyId},
+              "keyId": $keyId,
               "algorithm": ${jsonStr(ALGORITHM_ID)},
               "signature": ${jsonStr(signature)}
             }

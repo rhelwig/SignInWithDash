@@ -15,6 +15,7 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@dashevo/evo-sdk": "^4.1.0",
     "@hono/node-server": "^1.14.3",
     "@siwd/protocol": "file:../../packages/protocol",
     "better-sqlite3": "^11.10.0",

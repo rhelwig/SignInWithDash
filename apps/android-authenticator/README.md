@@ -21,25 +21,38 @@ Designed as a **login authenticator**, not a payment wallet (D-014 / demo notes)
 
 ## Build
 
-### Protocol unit tests (no Android SDK)
+**Java:** Android builds use **JDK 21** only for this project. Your system
+default can stay on Java 25 (e.g. Minecraft mods). Always prefix:
+
+```bash
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+export PATH="$JAVA_HOME/bin:$PATH"
+```
+
+**Android SDK** (installed under `~/Android/Sdk` on this machine):
+
+```bash
+export ANDROID_HOME=$HOME/Android/Sdk
+export ANDROID_SDK_ROOT=$ANDROID_HOME
+# local.properties is gitignored and points at sdk.dir
+```
+
+### Protocol unit tests
 
 ```bash
 cd apps/android-authenticator
 ./gradlew :protocol:test
 ```
 
-### Full APK (requires Android SDK)
-
-1. Install Android Studio / command-line tools (API 35, build-tools).
-2. Set `ANDROID_HOME` (or create `local.properties` with `sdk.dir=...`).
-3. Build:
+### Debug APK
 
 ```bash
 ./gradlew :app:assembleDebug
 # APK: app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-Sideload to the A7 over USB or copy the APK.
+Sideload to the Samsung Galaxy A7 over USB or copy the APK.
 
 ## Dev flow with localhost demo
 

@@ -31,12 +31,15 @@ export const DATA_DIR = env(
 export const DB_PATH = env("SIWD_DB_PATH", join(DATA_DIR, "demo.sqlite"));
 
 /**
- * M1: verify with local simulator fixture keys (no live Platform).
- * M2 will add "platform".
+ * Verification mode:
+ * - simulator: fixture keys only
+ * - platform: live Dash Platform testnet only
+ * - hybrid (default): try Platform, fall back to fixtures (dev-friendly)
  */
-export const VERIFY_MODE = env("SIWD_VERIFY_MODE", "simulator") as
+export const VERIFY_MODE = env("SIWD_VERIFY_MODE", "hybrid") as
   | "simulator"
-  | "platform";
+  | "platform"
+  | "hybrid";
 
 /** Enable /dev/simulator UI and signing (never on production without review). */
 export const ENABLE_SIMULATOR =

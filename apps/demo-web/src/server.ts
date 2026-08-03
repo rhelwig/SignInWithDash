@@ -16,8 +16,14 @@ import {
   HOST,
   PORT,
   PUBLIC_ORIGIN,
+  VERIFY_MODE,
   absoluteUrl,
 } from "./lib/config.js";
+import {
+  fetchIdentitySummary,
+  identitiesByPublicKeyHash,
+  resolveDpnsName,
+} from "./lib/platform.js";
 import { getDb } from "./lib/db.js";
 import {
   bindingMatches,
@@ -278,7 +284,7 @@ app.post("/dash-auth/v1/respond", async (c) => {
   } catch {
     return jsonError("invalid_request", "Invalid JSON", 400);
   }
-  const result = respondToRequest({
+  const result = await respondToRequest({
     type: body.type as string | undefined,
     version: body.version as number | undefined,
     requestId: String(body.requestId || ""),
@@ -474,11 +480,100 @@ if (ENABLE_SIMULATOR) {
   });
 }
 
+// --- Platform discovery proxy (for authenticator; testnet) ---
+
+app.get("/dash-auth/v1/platform/resolve", async (c) => {
+  if (!rateLimit(`plat:${clientKey(c)}`, 30, 60_000)) {
+    return jsonError("rate_limited", "Too many requests", 429);
+  }
+  const name = c.req.query("name") || "";
+  if (!name) return jsonError("invalid_request", "name required", 400);
+  try {
+    const r = await resolveDpnsName(name);
+    return c.json({
+      name: r.label + ".dash",
+      identityId: r.identityId,
+      network: "testnet",
+    });
+  } catch (e) {
+    const msg =
+      e instanceof Error
+        ? e.message
+        : typeof e === "string"
+          ? e
+          : e && typeof e === "object" && "message" in e
+            ? String((e as { message: unknown }).message)
+            : `resolve failed: ${String(e)}`;
+    console.error("platform/resolve error", e);
+    return jsonError("platform_unavailable", msg, 503);
+  }
+});
+
+app.post("/dash-auth/v1/platform/discover", async (c) => {
+  if (!rateLimit(`platd:${clientKey(c)}`, 20, 60_000)) {
+    return jsonError("rate_limited", "Too many requests", 429);
+  }
+  let body: { publicKeyHashes?: string[] };
+  try {
+    body = await c.req.json();
+  } catch {
+    return jsonError("invalid_request", "Invalid JSON", 400);
+  }
+  const hashes = body.publicKeyHashes || [];
+  if (!hashes.length || hashes.length > 40) {
+    return jsonError("invalid_request", "publicKeyHashes 1..40 required", 400);
+  }
+  try {
+    const found: Array<{
+      publicKeyHash: string;
+      identityIds: string[];
+    }> = [];
+    const identitySet = new Set<string>();
+    for (const h of hashes) {
+      const ids = await identitiesByPublicKeyHash(h);
+      if (ids.length) {
+        found.push({ publicKeyHash: h, identityIds: ids });
+        ids.forEach((id) => identitySet.add(id));
+      }
+    }
+    const identities = [];
+    for (const id of identitySet) {
+      const summary = await fetchIdentitySummary(id);
+      if (summary) identities.push(summary);
+    }
+    return c.json({ network: "testnet", found, identities });
+  } catch (e) {
+    return jsonError(
+      "platform_unavailable",
+      e instanceof Error ? e.message : "discover failed",
+      503,
+    );
+  }
+});
+
+app.get("/dash-auth/v1/platform/identity/:id", async (c) => {
+  if (!rateLimit(`plati:${clientKey(c)}`, 30, 60_000)) {
+    return jsonError("rate_limited", "Too many requests", 429);
+  }
+  try {
+    const summary = await fetchIdentitySummary(c.req.param("id"));
+    if (!summary) return jsonError("invalid_request", "Not found", 404);
+    return c.json({ network: "testnet", ...summary });
+  } catch (e) {
+    return jsonError(
+      "platform_unavailable",
+      e instanceof Error ? e.message : "fetch failed",
+      503,
+    );
+  }
+});
+
 app.get("/healthz", (c) =>
   c.json({
     ok: true,
     network: "testnet",
     origin: PUBLIC_ORIGIN,
+    verifyMode: VERIFY_MODE,
     accounts: listPublicAccounts().length,
   }),
 );

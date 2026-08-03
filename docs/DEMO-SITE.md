@@ -26,7 +26,7 @@ cd apps/demo-web && npm test
 | `HOST` | `127.0.0.1` | Bind address |
 | `SIWD_PUBLIC_ORIGIN` | `http://127.0.0.1:8787` | Origin used in capability URLs / `responseUri` |
 | `SIWD_DB_PATH` | `apps/demo-web/data/demo.sqlite` | SQLite file |
-| `SIWD_VERIFY_MODE` | `simulator` | `simulator` until M2 Platform |
+| `SIWD_VERIFY_MODE` | `hybrid` | `simulator` \| `hybrid` \| `platform` |
 | `SIWD_ENABLE_SIMULATOR` | `true` | Dev signer UI |
 | `SIWD_REQUEST_TTL_SECONDS` | `120` | Challenge lifetime |
 
@@ -89,9 +89,22 @@ want public.
   the name re-fetches / re-binds the challenge display as needed.
 - First device target for APK development: **Samsung Galaxy A7** (sideload).
 
+## Platform proxy (authenticator discovery)
+
+The demo also exposes testnet Platform helpers used by the Android app:
+
+| Path | Purpose |
+| --- | --- |
+| `GET /dash-auth/v1/platform/resolve?name=alice` | Resolve DPNS → identity id |
+| `POST /dash-auth/v1/platform/discover` | Body `{ publicKeyHashes: [...] }` |
+| `GET /dash-auth/v1/platform/identity/:id` | Keys + usernames |
+
+Implemented via an isolated `scripts/platform-worker.mjs` (Evo SDK), so WASM
+does not share the HTTP server process.
+
 ## M2 follow-ups
 
-- Replace simulator verification with live Dash Platform testnet reads.
+- Further harden hybrid/platform verification paths and key material parsing.
 - Document phone/standalone-auth-app install path on Get started.
 - Optional: hide or paginate account list if it grows large.
 - Optional: site-local display handles without publishing identity IDs (product

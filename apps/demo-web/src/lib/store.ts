@@ -26,6 +26,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from "./crypto-util.js";
+import { getPlatformKeyForSiwd } from "./platform.js";
 import { getSimulatorPlatform } from "./simulator-keys.js";
 
 export interface AuthRequestRow {
@@ -212,7 +213,7 @@ export type RespondResult =
   | { ok: true; requestId: string }
   | { ok: false; code: string; http: number; message: string };
 
-export function respondToRequest(body: {
+export async function respondToRequest(body: {
   type?: string;
   version?: number;
   requestId: string;
@@ -223,7 +224,7 @@ export function respondToRequest(body: {
   keyId: number;
   algorithm: string;
   signature: string;
-}): RespondResult {
+}): Promise<RespondResult> {
   const row = getRequestById(body.requestId);
   if (!row) {
     return {
@@ -297,83 +298,139 @@ export function respondToRequest(body: {
     };
   }
 
-  // Platform / simulator verification
-  if (VERIFY_MODE === "simulator") {
-    const platform = getSimulatorPlatform(body.identityId, body.dpnsName);
-    if (!platform) {
-      return {
-        ok: false,
-        code: "platform_unavailable",
-        http: 503,
-        message: "Simulator has no fixture for this identity/name",
-      };
-    }
-    if (platform.unavailable) {
-      return {
-        ok: false,
-        code: "platform_unavailable",
-        http: 503,
-        message: "Platform unavailable",
-      };
-    }
-    if (
-      platform.dpnsStatus !== "finalized" ||
-      platform.dpnsResolvedIdentityId !== body.identityId
-    ) {
-      return {
-        ok: false,
-        code: "name_ineligible",
-        http: 401,
-        message: "Name not eligible",
-      };
-    }
-    const key = platform.keys.find((k) => k.keyId === body.keyId);
-    if (
-      !key ||
-      !isKeyEligibleForSiwd({
-        keyId: key.keyId,
-        keyPurpose: key.keyPurpose,
-        securityLevel: key.securityLevel,
-        disabled: key.disabled,
-      })
-    ) {
-      return {
-        ok: false,
-        code: "key_ineligible",
-        http: 401,
-        message: "Key not eligible",
-      };
+  const canon: CanonicalInput = {
+    network: row.network as Network,
+    origin: row.origin,
+    action: row.action as Action,
+    bindingPolicy: row.binding_policy as BindingPolicy,
+    requestId: row.request_id,
+    nonce: base64urlDecode(row.nonce_b64url),
+    issuedAt: row.issued_at,
+    expiresAt: row.expires_at,
+    identityId: body.identityId,
+    dpnsName: body.dpnsName,
+    keyId: body.keyId,
+  };
+
+  // Prefer live Platform when available; fall back to simulator fixtures.
+  let publicKey: Uint8Array | null = null;
+  let usedPlatform = false;
+
+  if (VERIFY_MODE === "platform" || VERIFY_MODE === "hybrid" || VERIFY_MODE === "simulator") {
+    // Try Platform for non-fixture identities (and always when mode=platform)
+    const isFixture = Boolean(getSimulatorPlatform(body.identityId, body.dpnsName));
+    if (VERIFY_MODE === "platform" || (VERIFY_MODE !== "simulator" && !isFixture) || process.env.SIWD_TRY_PLATFORM === "1") {
+      try {
+        const plat = await getPlatformKeyForSiwd(
+          body.identityId,
+          body.dpnsName,
+          body.keyId,
+        );
+        if (plat.ok) {
+          if (
+            !isKeyEligibleForSiwd({
+              keyId: body.keyId,
+              keyPurpose: plat.keyPurpose,
+              securityLevel: plat.securityLevel,
+              disabled: plat.disabled,
+            })
+          ) {
+            return {
+              ok: false,
+              code: "key_ineligible",
+              http: 401,
+              message: "Key not eligible",
+            };
+          }
+          publicKey = plat.publicKey;
+          usedPlatform = true;
+        } else if (VERIFY_MODE === "platform") {
+          return {
+            ok: false,
+            code: plat.code,
+            http: plat.code === "platform_unavailable" ? 503 : 401,
+            message: plat.message,
+          };
+        }
+      } catch (e) {
+        if (VERIFY_MODE === "platform") {
+          return {
+            ok: false,
+            code: "platform_unavailable",
+            http: 503,
+            message: e instanceof Error ? e.message : "Platform error",
+          };
+        }
+      }
     }
 
-    const canon: CanonicalInput = {
-      network: row.network as Network,
-      origin: row.origin,
-      action: row.action as Action,
-      bindingPolicy: row.binding_policy as BindingPolicy,
-      requestId: row.request_id,
-      nonce: base64urlDecode(row.nonce_b64url),
-      issuedAt: row.issued_at,
-      expiresAt: row.expires_at,
-      identityId: body.identityId,
-      dpnsName: body.dpnsName,
-      keyId: body.keyId,
-    };
-
-    const ok = verifyCanonical(canon, body.signature, key.publicKey);
-    if (!ok) {
-      return {
-        ok: false,
-        code: "signature_invalid",
-        http: 401,
-        message: "Invalid signature",
-      };
+    if (!usedPlatform) {
+      const platform = getSimulatorPlatform(body.identityId, body.dpnsName);
+      if (!platform) {
+        return {
+          ok: false,
+          code: "platform_unavailable",
+          http: 503,
+          message:
+            "Unknown identity (not on Platform fixtures and Platform lookup failed)",
+        };
+      }
+      if (platform.unavailable) {
+        return {
+          ok: false,
+          code: "platform_unavailable",
+          http: 503,
+          message: "Platform unavailable",
+        };
+      }
+      if (
+        platform.dpnsStatus !== "finalized" ||
+        platform.dpnsResolvedIdentityId !== body.identityId
+      ) {
+        return {
+          ok: false,
+          code: "name_ineligible",
+          http: 401,
+          message: "Name not eligible",
+        };
+      }
+      const key = platform.keys.find((k) => k.keyId === body.keyId);
+      if (
+        !key ||
+        !isKeyEligibleForSiwd({
+          keyId: key.keyId,
+          keyPurpose: key.keyPurpose,
+          securityLevel: key.securityLevel,
+          disabled: key.disabled,
+        })
+      ) {
+        return {
+          ok: false,
+          code: "key_ineligible",
+          http: 401,
+          message: "Key not eligible",
+        };
+      }
+      publicKey = key.publicKey;
     }
-  } else {
+  }
+
+  if (!publicKey) {
     return {
       ok: false,
       code: "internal_error",
       http: 500,
-      message: "Platform verification not enabled yet",
+      message: "No verification key",
+    };
+  }
+
+  const ok = verifyCanonical(canon, body.signature, publicKey);
+  if (!ok) {
+    return {
+      ok: false,
+      code: "signature_invalid",
+      http: 401,
+      message: "Invalid signature",
     };
   }
 
