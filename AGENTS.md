@@ -19,6 +19,12 @@ website authentication using Dash Platform identities and DPNS names.
   name, and expiration before asking for approval.
 - Authentication requests must be domain-bound, short-lived, single-use, and
   rejected closed when validation is incomplete.
+- Capability URL tokens must be at least 256 bits; request bodies with nonces
+  must not be cacheable; full capability URLs must not be retained in logs.
+- Treat successful DAPI/SDK Platform reads as valid; if Platform is
+  unavailable, login fails (no session without verification).
+- No free-form approval statements, confirmation codes, or required BLE
+  proximity in the MVP.
 
 ## Development
 

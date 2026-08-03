@@ -114,34 +114,72 @@ the request URL or phone response alone from yielding a browser session.
 
 Browser binding alone does **not** stop an attacker who creates a request in the
 attacker's browser and persuades a victim to approve that QR, because the
-attacker holds the correct cookie. The user must still confirm the real domain
-and intended action. Draft 1 must add and test a stronger QR-forwarding defense,
-such as a browser/phone confirmation value or another ceremony that binds the
-approval to the user's browser.
+attacker holds the correct cookie. The user must still confirm they personally
+started a login for the displayed domain. MVP mitigations are short TTL,
+explicit approval warning, and session history/revoke—not confirmation codes
+and not required BLE proximity. See [`SECURITY.md`](SECURITY.md) §7 and
+[`PROTOCOL.md`](PROTOCOL.md) §8.3.
 
-## 3. Message inventory
+### Capability URL and caching
+
+The QR encodes an HTTPS capability URL with a **≥256-bit** secret token. The
+authenticator fetches the structured request over TLS. Request JSON that
+contains the nonce must use `Cache-Control: no-store`. Caching the QR image
+itself for the short request lifetime is acceptable. Full capability URLs must
+not appear in retained access logs or leak via `Referer`. Details:
+[`PROTOCOL.md`](PROTOCOL.md) §2.1–2.2.
+
+## 3. Request lifecycle (state machine)
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: create request
+    pending --> approved: valid signed response
+    pending --> rejected: user/app reject
+    pending --> cancelled: browser/site cancel
+    pending --> expired: TTL elapsed
+    approved --> consumed: browser finish + binding cookie
+    approved --> expired: finish window elapsed
+    approved --> cancelled: explicit cancel if still allowed
+    rejected --> [*]
+    cancelled --> [*]
+    expired --> [*]
+    consumed --> [*]
+```
+
+Normative transition rules, cookie attributes, finish grants, and race
+behavior are in [`PROTOCOL.md`](PROTOCOL.md) §7–8.
+
+| Status | Who acts next | Session issued? |
+| --- | --- | --- |
+| `pending` | Authenticator may respond; browser polls | No |
+| `approved` | Browser with binding cookie may finish | Not yet |
+| `consumed` | Terminal | Yes (on successful finish) |
+| `rejected` / `cancelled` / `expired` | Terminal | No |
+
+## 4. Message inventory
 
 Endpoint names are illustrative. Draft 1 may change the paths, but not the
 separation of responsibilities.
 
 | Message | Sender → receiver | Important contents | Authentication or protection |
 | --- | --- | --- | --- |
-| Create request | Browser → server | Action and site-selected binding policy | HTTPS, CSRF protection where applicable |
-| Request page | Server → browser | QR capability URL, expiry, request status UI | HTTPS plus browser-binding cookie |
-| Fetch request | Authenticator → server | High-entropy request capability | HTTPS, short lifetime, rate limiting |
-| Authentication request | Server → authenticator | Request ID, nonce, origin, action, binding policy, timestamps, response URI, requested claims | Capability URL plus strict app validation |
-| Platform lookup | Authenticator → Platform | Identity/name/key queries | Prefer SDK-verified proofs |
+| Create request | Browser → server | Action and site-selected binding policy | HTTPS, CSRF-safe create (POST), rate limit |
+| Request page | Server → browser | QR capability URL (≥256-bit token), expiry, status UI | HTTPS; binding cookie `Secure` `HttpOnly` `SameSite=Strict` preferred |
+| Fetch request | Authenticator → server | Capability token | HTTPS; short lifetime; rate limit; `no-store` body |
+| Authentication request | Server → authenticator | Request ID, nonce, origin, action, binding policy, timestamps, response URI, requested claims | Capability URL plus strict app validation; no free-form statement |
+| Platform lookup | Authenticator → Platform | Identity/name/key queries | Display aid only; server re-verifies |
 | Signed response | Authenticator → server | Request ID, policy, identity ID, DPNS name, key ID, algorithm, signature | Domain-bound canonical signature |
-| Verification lookup | Server → Platform | Current identity keys, disabled state, and DPNS resolution | Prefer SDK-verified proofs |
-| Status check | Browser → server | Request ID or server-side browser state | Browser-binding cookie; uniform status responses |
-| Finish login | Browser → server | One-time approved request | Binding cookie, atomic consumption, session rotation |
-| Session response | Server → browser | Local website session | Secure, HTTP-only, same-site cookie |
+| Verification lookup | Server → Platform | Current identity keys, disabled state, DPNS resolution | Successful DAPI/SDK data treated as valid; if unavailable, login fails |
+| Status check | Browser → server | Request ID or server-side browser state | Binding cookie; no useful leak to unbound clients |
+| Finish login | Browser → server | One-time finish grant | POST only; binding cookie; atomic consume; session rotation |
+| Session response | Server → browser | Local website session | `Secure`, `HttpOnly`, deliberate `SameSite` |
 
 No message contains a recovery phrase or private key. Normal authentication
 does not submit a Dash Platform state transition and does not consume Platform
 credits.
 
-## 4. What is signed
+## 5. What is signed
 
 The authenticator signs the security-relevant request and response values, not
 arbitrary website text and not the JSON serialization itself.
@@ -168,7 +206,7 @@ Changing the origin, action, binding policy, request ID, nonce, expiry,
 identity, name, or key ID causes signature verification or request comparison
 to fail.
 
-## 5. Same-device flow
+## 6. Same-device flow
 
 On a phone, the browser opens the same HTTPS request URL as a verified
 application link. The cryptographic request and response do not change.
@@ -204,7 +242,7 @@ The return URL is navigation, not proof of authentication. The server accepts
 only the signed response, and the browser still needs its original binding
 cookie to receive a session.
 
-## 6. Account-binding policy branch
+## 7. Account-binding policy branch
 
 The wire exchange proves the same relationship under both policies. The
 website's stored policy determines which local provider record is selected.
@@ -241,7 +279,7 @@ For `identity_bound`, a transferred preferred name does not transfer the local
 account. For `name_bound`, the current owner of the name controls the local
 account and its transferable rights.
 
-## 7. Name-bound ownership transfer sequence
+## 8. Name-bound ownership transfer sequence
 
 The current controller may change on Dash Platform before either party visits
 the website. A name-bound site therefore revalidates control during login and
@@ -263,8 +301,9 @@ sequenceDiagram
 
     Buyer->>Auth: Approve login for name N
     Auth->>Server: Signed response from I2 for N<br/>with policy name_bound
-    Server->>Platform: Resolve N and retrieve I2 key
+    Server->>Platform: Resolve N and retrieve I2 key with proofs
     Platform-->>Server: Finalized N → I2 and active key
+    Note over Server: Login fails if Platform unavailable<br/>or name contested/unresolved
     Server->>Server: Verify signature and policy
     Server->>Sessions: In one transaction:<br/>revoke seller sessions and recovery,<br/>rotate API credentials,<br/>move account rights to I2,<br/>and append transfer audit record
     Sessions-->>Server: Ownership rebind committed
@@ -274,9 +313,10 @@ sequenceDiagram
 If revocation or ownership rebinding cannot complete, the transfer login fails
 closed and no buyer session is issued. Historical records retain the identity
 that performed each past action rather than being rewritten as actions by the
-buyer.
+buyer. Site-specific revocation checklists are suggested in
+[`SECURITY.md`](SECURITY.md) §10.
 
-## 8. Failure behavior
+## 9. Failure behavior
 
 At every failure point, the server creates no session and performs no partial
 account transfer:
@@ -285,9 +325,12 @@ account transfer:
   to `pending`;
 - malformed or mismatched fields fail before signature acceptance;
 - an unknown, disabled, incorrectly scoped, or disallowed key is rejected;
-- a name that does not currently resolve to the signing identity is rejected;
+- a name that is unresolved, contested, or does not currently resolve to the
+  signing identity is rejected;
+- Platform outage means verification cannot complete, so login fails;
 - a response with the wrong binding policy is rejected;
 - a browser without the original binding cookie cannot finish an approved
-  login; and
+  login;
+- finish is POST-only and single-use; and
 - a name-bound controller change is committed together with all required
   revocations or not committed at all.

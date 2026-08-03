@@ -1,0 +1,31 @@
+{
+  "id": "v1/negative/021-http-non-loopback",
+  "protocolVersion": 1,
+  "expect": "reject",
+  "comment": "HTTP origins are only allowed for loopback development",
+  "rejectReason": "invalid_request",
+  "request": {
+    "type": "dash-auth-request",
+    "version": 1,
+    "network": "testnet",
+    "requestId": "01TESTREQUEST00000000000000",
+    "nonce_b64url": "obLD1OX2BxgpOktcbX6PkBEiM0RVZneImaq7zN3u_wA",
+    "origin": "http://example.test",
+    "domain": "example.test",
+    "action": "login",
+    "bindingPolicy": "identity_bound",
+    "issuedAt": "2026-07-30T18:00:00.000Z",
+    "expiresAt": "2026-07-30T18:02:00.000Z",
+    "responseUri": "http://example.test/dash-auth/v1/respond",
+    "requestedClaims": [
+      "dash_identity_id",
+      "dpns_name"
+    ]
+  },
+  "response": {},
+  "canonical_hex": "",
+  "digest_sha256d_hex": "",
+  "platform": {},
+  "cryptoOnly": true,
+  "stage": "request_create"
+}

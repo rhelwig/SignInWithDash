@@ -1,38 +1,16 @@
-# Dependencies and build outputs
 node_modules/
 dist/
-build/
-.gradle/
-.kotlin/
-*.apk
-*.aab
-
-# Local configuration
+*.log
+.DS_Store
 .env
 .env.*
 !.env.example
-local.properties
-*.local
-
-# Secrets and wallet material
-*.wif
-*.mnemonic
-*.seed
-*.keystore
-*.jks
-secrets/
-wallet-data/
-
-# Databases, logs, and test captures
-*.db
-*.db-shm
-*.db-wal
-*.log
-captures/
-
-# Editors and operating systems
-.idea/
-.vscode/
 .obsidian/
+apps/demo-web/data/*.sqlite
+apps/demo-web/data/*.sqlite-*
 *.iml
-.DS_Store
+.idea/
+.gradle/
+local.properties
+**/build/
+!docs/**/build/

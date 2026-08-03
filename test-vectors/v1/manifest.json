@@ -1,0 +1,177 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": 1,
+  "algorithm": "dash-platform-ecdsa-recoverable-sha256d",
+  "generator": "@siwd/protocol TypeScript",
+  "generatedAt": "2026-08-02T15:01:20.176Z",
+  "cases": [
+    {
+      "id": "v1/positive/001-login-identity-bound",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/001-login-identity-bound.json"
+    },
+    {
+      "id": "v1/positive/002-register-identity-bound",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/002-register-identity-bound.json"
+    },
+    {
+      "id": "v1/positive/003-link-identity-bound",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/003-link-identity-bound.json"
+    },
+    {
+      "id": "v1/positive/004-login-name-bound",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/004-login-name-bound.json"
+    },
+    {
+      "id": "v1/positive/005-nondefault-https-port",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/005-nondefault-https-port.json"
+    },
+    {
+      "id": "v1/positive/006-key-id-not-2",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/006-key-id-not-2.json"
+    },
+    {
+      "id": "v1/positive/007-long-dpns-name",
+      "expect": "accept",
+      "rejectReason": null,
+      "file": "positive/007-long-dpns-name.json"
+    },
+    {
+      "id": "v1/negative/001-wrong-origin",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/001-wrong-origin.json"
+    },
+    {
+      "id": "v1/negative/002-wrong-network",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/002-wrong-network.json"
+    },
+    {
+      "id": "v1/negative/003-wrong-action",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/003-wrong-action.json"
+    },
+    {
+      "id": "v1/negative/004-wrong-binding-policy",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/004-wrong-binding-policy.json"
+    },
+    {
+      "id": "v1/negative/005-wrong-request-id",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/005-wrong-request-id.json"
+    },
+    {
+      "id": "v1/negative/006-wrong-nonce",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/006-wrong-nonce.json"
+    },
+    {
+      "id": "v1/negative/007-expired",
+      "expect": "reject",
+      "rejectReason": "expired",
+      "file": "negative/007-expired.json"
+    },
+    {
+      "id": "v1/negative/008-issued-at-far-future",
+      "expect": "reject",
+      "rejectReason": "invalid_request",
+      "file": "negative/008-issued-at-far-future.json"
+    },
+    {
+      "id": "v1/negative/009-high-s-signature",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/009-high-s-signature.json"
+    },
+    {
+      "id": "v1/negative/010-truncated-signature",
+      "expect": "reject",
+      "rejectReason": "signature_invalid",
+      "file": "negative/010-truncated-signature.json"
+    },
+    {
+      "id": "v1/negative/011-wrong-key-id",
+      "expect": "reject",
+      "rejectReason": "key_ineligible",
+      "file": "negative/011-wrong-key-id.json"
+    },
+    {
+      "id": "v1/negative/012-disabled-key",
+      "expect": "reject",
+      "rejectReason": "key_ineligible",
+      "file": "negative/012-disabled-key.json"
+    },
+    {
+      "id": "v1/negative/013-name-other-identity",
+      "expect": "reject",
+      "rejectReason": "name_ineligible",
+      "file": "negative/013-name-other-identity.json"
+    },
+    {
+      "id": "v1/negative/014-contested-name",
+      "expect": "reject",
+      "rejectReason": "name_ineligible",
+      "file": "negative/014-contested-name.json"
+    },
+    {
+      "id": "v1/negative/015-unresolved-name",
+      "expect": "reject",
+      "rejectReason": "name_ineligible",
+      "file": "negative/015-unresolved-name.json"
+    },
+    {
+      "id": "v1/negative/016-master-key",
+      "expect": "reject",
+      "rejectReason": "key_ineligible",
+      "file": "negative/016-master-key.json"
+    },
+    {
+      "id": "v1/negative/017-transfer-key",
+      "expect": "reject",
+      "rejectReason": "key_ineligible",
+      "file": "negative/017-transfer-key.json"
+    },
+    {
+      "id": "v1/negative/018-critical-auth-key",
+      "expect": "reject",
+      "rejectReason": "key_ineligible",
+      "file": "negative/018-critical-auth-key.json"
+    },
+    {
+      "id": "v1/negative/019-platform-unavailable",
+      "expect": "reject",
+      "rejectReason": "platform_unavailable",
+      "file": "negative/019-platform-unavailable.json"
+    },
+    {
+      "id": "v1/negative/020-trailing-dot-host",
+      "expect": "reject",
+      "rejectReason": "invalid_request",
+      "file": "negative/020-trailing-dot-host.json"
+    },
+    {
+      "id": "v1/negative/021-http-non-loopback",
+      "expect": "reject",
+      "rejectReason": "invalid_request",
+      "file": "negative/021-http-non-loopback.json"
+    }
+  ]
+}

@@ -37,10 +37,13 @@ first working slice.
 - QR generation occurs locally in the app, not through a third-party service.
 - Current `@dashevo/evo-sdk` is the leading Platform integration candidate.
 
-### First wallet integration
+### First wallet integration (MVP demo)
 
 - Fork the current official Dash Android wallet and add SIWD as a bounded
-  feature rather than creating a second wallet implementation immediately.
+  **demo** feature that shows how SIWD *could* integrate into real wallets.
+- Treat the fork as a testnet demonstration and upstream-evaluation artifact,
+  not as a preferred production daily driver without wallet maintainers' own
+  security review and adoption.
 - Keep the integration as a separable module/change set suitable for an
   upstream pull request.
 - Native Kotlin and the wallet's existing UI architecture.
@@ -51,7 +54,7 @@ first working slice.
   toward the current Platform Kotlin/Rust SDK where compatible.
 - BiometricPrompt/device credential for every approval.
 - No general-purpose signing API: the integration accepts only valid SIWD
-  requests and displays their relying-party context.
+  requests and displays their relying-party context with canned templates.
 
 The protocol, canonical encoder, verifier behavior, and conformance vectors
 must not depend on Android, Kotlin, Android App Links, or wallet-internal data
@@ -60,7 +63,7 @@ sideloading and already supports Dash Platform identities. Later integrations
 may use the official iOS wallet, a desktop wallet, a browser-to-local-app
 handoff, or an independent authenticator without changing the wire protocol.
 
-The wallet fork is only a testnet demonstration and possible upstream change.
+The wallet fork remains a testnet demonstration and possible upstream change.
 If a separately packaged Android authenticator is built, it must:
 
 - work on GrapheneOS with no Google Play services installed;
@@ -80,55 +83,71 @@ If a separately packaged Android authenticator is built, it must:
 - [x] Establish project intent, product scope, and initial references.
 - [x] Draft product, protocol, and threat-model documents.
 - [x] Inspect current Android DashPay and Platform wallet source.
-- [ ] Locate and evaluate current Yappr/Yapper authentication work.
-- [x] Select the provisional Dash signing primitive.
-- [ ] Finalize the eligible identity-key policy across historical identities.
-- [ ] Define canonical binary encoding.
-- [ ] Publish cross-language test vectors.
-- [ ] Include `bindingPolicy` in requests, responses, canonical bytes, and
-      negative vectors.
-- [ ] Record decisions in `DECISIONS.md`.
+- [x] Record capability-URL, DAPI trust, state machine, canned approval,
+      SIWD-authority, and anti-relay decisions in `DECISIONS.md`.
+- [x] Draft 1 protocol: canonical encoding, HTTP API, key/name rules, errors
+      (`PROTOCOL.md`), test-vector schema (`TEST-VECTORS.md`).
+- [x] Locate and evaluate current Yappr authentication work (DApp key
+      bootstrap, not SIWD; see `RESEARCH-2026-08-02-YAPPR-AND-KEYS.md`).
+- [x] Select the Dash signing primitive (Platform recoverable SHA256d).
+- [x] Document eligible identity-key policy: AUTHENTICATION/HIGH only; never
+      master/transfer/etc.; no CRITICAL fallback unless a later survey proves
+      HIGH-less identities (`DECISIONS.md` D-010).
+- [x] Generate numeric golden vectors from first encoder (`test-vectors/v1/`,
+      TypeScript `@siwd/protocol`; critical positive/negative cases covered).
+- [ ] Pin SDK versions and freeze DPNS normalizer vectors against live SDK.
+- [ ] Re-verify golden vectors from Kotlin (and optionally Rust) once hosts land.
 
 Exit: Kotlin and TypeScript can independently generate the same digest and
 verify the same test signatures.
 
 ### M1 — Website request lifecycle with simulator
 
-- [ ] Create protocol TypeScript package.
-- [ ] Implement in-memory then SQLite challenge store.
-- [ ] Render login/register pages, QR, copy link, status, and expiry.
-- [ ] Implement browser-binding cookie and atomic request states.
-- [ ] Build a development-only signer simulator with generated test keys.
-- [ ] Add replay, expiry, mutation, and browser-binding tests.
-- [ ] Add the explicit cross-device “only approve if you started this login”
-      warning to simulator approval fixtures and tests.
-- [ ] Select and test an additional defense against attacker-originated QR
-      forwarding; do not treat browser binding alone as sufficient.
-- [ ] Prototype an ephemeral browser/authenticator channel with BLE or
-      equivalent proximity proof and compare it with authenticator-initiated
-      login.
-- [ ] Model both provider-key policies in SQLite, with `identity_bound` enabled
-      first in the demo.
+- [x] Create protocol TypeScript package.
+- [x] Implement SQLite challenge store with full state machine (pending →
+      approved → consumed / reject / cancel / expire).
+- [x] Issue ≥256-bit capability tokens; `no-store` request bodies; rate limits.
+- [x] Render login/register pages, QR, copy link, status, and expiry.
+- [x] Browser-binding cookie, finish, session cookie rotation (session-only).
+- [x] Development-only signer simulator with generated test keys.
+- [x] Smoke test: register → sign → finish → /me + public accounts.
+- [ ] Expand automated tests: replay, double-respond, double-finish, binding
+      mismatch (partially covered by smoke; add unit suite).
+- [x] Cross-device “only approve if you started this login” warning on ceremony
+      + simulator.
+- [x] Document residual QR-forwarding risk on `/security` and ceremony page.
+- [x] Session history / revoke UI on `/me`.
+- [x] `identity_bound` in SQLite (name_bound deferred).
+- [x] Deactivate account revokes sessions (unlink/deactivate demo policy).
+- [x] Public accounts directory, about / how-it-works / get-started pages.
 
 Exit: the entire user journey works locally without claiming Dash verification.
+**Met** for simulator mode (`docs/DEMO-SITE.md`).
 
 ### M2 — Real Platform verification
 
 - [ ] Connect verifier to Dash Platform testnet.
 - [ ] Retrieve identity and eligible active authentication key.
-- [ ] Resolve and normalize DPNS name.
+- [ ] Resolve and normalize DPNS name; reject contested/unresolved names.
 - [ ] Verify real test signatures.
-- [ ] Request SDK-verified proofs where supported.
-- [ ] Add network outage/stale data/error behavior.
+- [ ] Retrieve Platform identity/DPNS state via pinned SDK (trust successful
+      reads; login fails if unavailable).
+- [ ] Optional sampled multi-endpoint cross-check configuration (not full
+      fan-out).
+- [ ] Add network outage / unavailable Platform tests (expect login failure).
 
 Exit: a command-line signer using a generated testnet phrase can authenticate.
 
-### M3 — Dash Android wallet integration
+### M3 — Dash Android wallet integration (demo)
 
 - [ ] Fork and reproducibly build the current Dash Android wallet.
-- [ ] Add a bounded testnet SIWD feature/module with no arbitrary-signing API.
+- [ ] Add a bounded testnet SIWD **demo** module with no arbitrary-signing API.
+- [ ] Document clearly that the fork is an integration demonstration, not a
+      production recommendation without upstream review.
 - [ ] Reuse the wallet's existing restored identity and DPNS name selection.
 - [ ] Resolve an eligible identity authentication key through a narrow adapter.
+- [ ] Canned approval UI with confusable-safe fonts; cross-device initiation
+      warning; no confirmation codes.
 - [ ] Require device authentication for each SIWD signature.
 - [ ] Verify no secrets in logs, backup, screenshots, or process recreation.
 
@@ -152,8 +171,8 @@ success criteria in `SPECS.md`.
 ### M5 — Name-bound ownership
 
 - [ ] Enable `name_bound` as an explicit relying-party policy.
-- [ ] Detect a changed DPNS controller using fresh, preferably proved, finalized
-      Platform state.
+- [ ] Detect a changed DPNS controller using fresh finalized Platform state
+      (login fails if Platform unavailable).
 - [ ] Atomically rebind account control and transfer account rights.
 - [ ] Revoke former-controller sessions, pending requests, linked providers,
       recovery paths, and API credentials.
@@ -203,17 +222,21 @@ Mainnet remains a separate gated decision.
 
 ## 4. Immediate next work
 
-1. Resolve Yappr/Yapper project identity and compare its QR flow.
-2. Write Draft 1 canonical encoding and cross-language test vectors.
-3. Verify the Kotlin SDK artifact/JNI packaging and the phrase-deletion
-   lifecycle, and map it against the current Android wallet's own key storage,
-   without writing application UI.
-4. Confirm Evo SDK identity/DPNS proof APIs for the server verifier.
-5. Inspect Android upstream contribution boundaries and identify the smallest
-   SIWD module/change set that could plausibly be reviewed.
+1. [Done] Draft 1 encoding + TypeScript golden vectors (`packages/protocol`,
+   `test-vectors/v1/`).
+2. [Done] **M1** demo website + simulator (`apps/demo-web`, see
+   `docs/DEMO-SITE.md`). Expand automated edge-case tests as needed.
+3. **M2**: pin Evo SDK; real testnet identity/DPNS verification; login fails if
+   Platform unavailable.
+4. Verify the Kotlin SDK artifact/JNI packaging and the phrase-deletion
+   lifecycle against the wallet's key storage, without writing application UI.
+5. Inspect Android upstream contribution boundaries for the smallest demo SIWD
+   module that could plausibly be reviewed.
+6. Optional later: public deploy to `dashlogin.ronhelwig.com` after local soak;
+   align SIWD URI scheme with wallet maintainers.
 
-Implementation remains paused until the existing documentation and the new
-source-inspection findings have been reviewed.
+Next build slice: M2 Platform verification and/or more adversarial tests on the
+demo.
 
 ## 5. Verification strategy
 

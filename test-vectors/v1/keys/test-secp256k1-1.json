@@ -1,0 +1,9 @@
+{
+  "id": "test-secp256k1-1",
+  "comment": "Deterministic offline test key. Private scalar is 1 (hex 00..01). NOT a wallet seed.",
+  "curve": "secp256k1",
+  "privateKey_hex": "0000000000000000000000000000000000000000000000000000000000000001",
+  "publicKey_hex_compressed": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+  "identityId_fixture": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+  "identityId_raw_hex": "1111111111111111111111111111111111111111111111111111111111111111"
+}

@@ -304,8 +304,9 @@ For the TypeScript verifier:
   protocol bytes through `KeystoreSigner`; otherwise propose the smallest
   upstreamable wrapper around the existing Rust signer.
 - Confirm server-side identity and DPNS proof APIs in Evo SDK 4.1.
-- Test older/restored identities whose key IDs or key types differ from the
-  canonical current layout.
+- Sample older/restored identities for key metadata (expect HIGH present under
+  DIP 11; SIWD is HIGH-only per D-010 — no CRITICAL fallback unless a survey
+  finds a real gap).
 - Confirm behavior for a key disabled between request issuance and response
   verification.
 

@@ -187,7 +187,9 @@ This is a security design target, not a completed assurance claim. Draft 1
 encoding, conformance vectors, implementation, adversarial testing, and
 independent review are still required. In particular, QR forwarding and user
 confusion need explicit testing; displaying a domain does not by itself satisfy
-the strongest definition of phishing resistance.
+the strongest definition of phishing resistance. SIWD trusts successfully
+retrieved DAPI/SDK Platform state (including names); if that state cannot be
+retrieved, login fails. SIWD does not query every DAPI node on every login.
 
 ### How phishing or forwarding could work
 
@@ -227,40 +229,38 @@ name or channel binding from defenses that depend on the user's vigilance.
 
 ### Ways SIWD can improve phishing resistance
 
-1. **Require physical proximity for cross-device login.** Establish an
-   encrypted browser-to-authenticator channel using ephemeral keys and prove
-   proximity with Bluetooth Low Energy or another local transport. FIDO's
-   cross-device passkey flow similarly uses BLE to verify physical proximity
-   while keeping actual authentication security in the cryptographic protocol.
-   [FIDO cross-device authentication](https://fidoalliance.org/passkeys/)
-2. **Offer authenticator-initiated login.** The user selects a known site in
-   the authenticator, which opens a verified site URL and starts the ceremony
-   from the trusted app rather than from an untrusted QR. This is especially
-   suitable for same-device use.
-3. **Bind high-risk actions, not only login.** A site can require a fresh SIWD
+1. **Offer authenticator-initiated login (planned extension).** The user
+   selects a known site in the authenticator, which opens a verified site URL
+   and starts the ceremony from the trusted app rather than from an untrusted
+   QR. Especially suitable for same-device use.
+2. **Bind high-risk actions, not only login.** A site can require a fresh SIWD
    signature describing a specific action such as changing recovery,
    transferring ownership, or creating an API credential. A stolen login
    session then cannot silently perform those operations.
-4. **Make approval highly specific.** Always show the verified domain,
-   `register`/`login`/`link` action, requested account, binding policy, and
-   whether the browser is locally nearby. This reduces confusion but is not,
-   by itself, cryptographic phishing resistance.
-5. **Notify and expose session history.** Record new sessions and controller
+3. **Make approval highly specific.** Always show the verified domain,
+   `register`/`login`/`link` action, requested account, and binding policy
+   using canned templates and confusable-safe fonts. This reduces confusion but
+   is not, by itself, cryptographic phishing resistance.
+4. **Notify and expose session history.** Record new sessions and controller
    changes, notify existing trusted endpoints where possible, and give users a
    fast way to revoke them.
-6. **Use confirmation values only as a supplemental control.** Matching words
-   or numbers on browser and phone help detect accidental QR mix-ups, but an
-   active phishing page can relay the same value. They must not be presented as
-   a complete forwarding defense.
+5. **Optional future proximity (not MVP).** Encrypted browser-to-authenticator
+   channels with BLE or similar can approach FIDO-style proximity proofs, but
+   they fail for legitimate offline-radio cases (for example airplane mode) and
+   are too heavy as a default requirement.
+   [FIDO cross-device authentication](https://fidoalliance.org/passkeys/)
 
-For the cross-device MVP, local proximity is the most promising strong defense
-to investigate. If that cannot be implemented safely in the first version, the
-project should describe the residual forwarding risk plainly rather than label
-the flow phishing-resistant.
+**Not used:** browser/phone confirmation codes. They add friction and do not
+stop an active attacker who already controls a real login page and can relay
+the same value.
+
+For the cross-device MVP, residual QR-forwarding risk is accepted and described
+plainly. Short TTL, browser binding, initiation warnings, and session
+revoke/history are the shipped controls. Do not label the flow
+phishing-resistant.
 
 Authenticator-initiated login and session history/notifications are useful
-early follow-ups, but they need not block the first identity-bound
-demonstration.
+early follow-ups and need not block the first identity-bound demonstration.
 
 ## 5. Identity control and decentralization
 

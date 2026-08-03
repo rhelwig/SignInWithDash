@@ -1,0 +1,49 @@
+{
+  "id": "v1/positive/003-link-identity-bound",
+  "protocolVersion": 1,
+  "expect": "accept",
+  "comment": "Link action",
+  "request": {
+    "type": "dash-auth-request",
+    "version": 1,
+    "network": "testnet",
+    "requestId": "01TESTREQUEST00000000000000",
+    "nonce_b64url": "obLD1OX2BxgpOktcbX6PkBEiM0RVZneImaq7zN3u_wA",
+    "origin": "https://example.test",
+    "domain": "example.test",
+    "action": "link",
+    "bindingPolicy": "identity_bound",
+    "issuedAt": "2026-07-30T18:00:00.000Z",
+    "expiresAt": "2026-07-30T18:02:00.000Z",
+    "responseUri": "https://example.test/dash-auth/v1/respond",
+    "requestedClaims": [
+      "dash_identity_id",
+      "dpns_name"
+    ]
+  },
+  "response": {
+    "type": "dash-auth-response",
+    "version": 1,
+    "requestId": "01TESTREQUEST00000000000000",
+    "network": "testnet",
+    "bindingPolicy": "identity_bound",
+    "identityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "dpnsName": "alice.dash",
+    "keyId": 2,
+    "algorithm": "dash-platform-ecdsa-recoverable-sha256d",
+    "signature_b64url": "H93gjFB_7CxnZ8LuwtuW5vVQ8msdm7-VD8D-MyjZrf2ORClwFNsstCQieBNlJQlDcu-0bzJTpPtsKsmUw3fMV_0"
+  },
+  "canonical_hex": "534957440000000100001468747470733a2f2f6578616d706c652e746573740301001b303154455354524551554553543030303030303030303030303030a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00000000006a6b9120000000006a6b91981111111111111111111111111111111111111111111111111111111111111111000a616c6963652e6461736800000002",
+  "digest_sha256d_hex": "777a41e1943a08d2df80b95d4f1c15041217193a37327889a5268c9fcbbc226d",
+  "platform": {
+    "identityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "publicKey_hex_compressed": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "keyId": 2,
+    "keyPurpose": "AUTHENTICATION",
+    "securityLevel": "HIGH",
+    "disabled": false,
+    "dpnsResolvedIdentityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "dpnsStatus": "finalized"
+  },
+  "cryptoOnly": true
+}

@@ -1,0 +1,43 @@
+{
+  "name": "@siwd/protocol",
+  "version": "0.1.0",
+  "description": "Sign in with Dash protocol: canonical encoding, digest, and recoverable signatures",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "generate-vectors": "tsx src/generate-vectors.ts",
+    "verify-vectors": "tsx src/verify-vectors.ts",
+    "test": "tsx src/verify-vectors.ts"
+  },
+  "keywords": [
+    "siwd",
+    "dash",
+    "authentication"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
+    "bs58": "^6.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.4",
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

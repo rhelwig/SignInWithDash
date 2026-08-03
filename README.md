@@ -41,8 +41,10 @@ The initial phone app is deliberately not a payment wallet. It derives only the
 identity material required for authentication and exposes no payment,
 withdrawal, identity-update, or arbitrary-signing interface.
 
-The initial official-wallet modification is a testnet demonstration intended
-to inform a possible upstream integration. A future separately packaged SIWD
+The initial official-wallet modification is an MVP **demo** that shows how SIWD
+*could* integrate into real wallets and informs a possible upstream pull
+request. It is not a preferred production daily driver without wallet
+maintainers' own security review. A future separately packaged SIWD
 authenticator has additional portability requirements: it must work on
 GrapheneOS without Google Play services and remain suitable for direct,
 F-Droid-compatible, and Google Play/Aurora installation paths.
@@ -53,17 +55,41 @@ The project is in its specification and threat-model phase. No production-safe
 authenticator exists yet. Testnet is the only planned network for the first
 working milestone.
 
+## Status
+
+Protocol Draft 1 encoding and **numeric golden vectors** live under
+`test-vectors/v1/` (generated and verified by `packages/protocol`).
+
+```bash
+cd packages/protocol && npm install && npm test
+```
+
+### Demo website (M1)
+
+Localhost demo with QR login ceremony, public account list, and a **dev
+simulator** (fixture keys; no live Platform yet):
+
+```bash
+cd apps/demo-web && npm install && npm run dev
+# http://127.0.0.1:8787
+```
+
+See [docs/DEMO-SITE.md](docs/DEMO-SITE.md).
+
 ## Documentation
 
 - [Authentication and message flows](docs/FLOWS.md)
 - [Authentication-method comparison and positioning](docs/AUTHENTICATION-COMPARISON.md)
 - [Product specification](docs/SPECS.md)
-- [Authentication protocol](docs/PROTOCOL.md)
+- [Authentication protocol (Draft 1)](docs/PROTOCOL.md)
+- [Test vector layout](docs/TEST-VECTORS.md)
 - [Security and threat model](docs/SECURITY.md)
 - [Research and prior art](docs/RESEARCH-2026-07-27.md)
+- [Yappr evaluation and key eligibility (2026-08-02)](docs/RESEARCH-2026-08-02-YAPPR-AND-KEYS.md)
 - [Current implementation and signing inspection](docs/DASH-IMPLEMENTATION-INSPECTION-2026-07-27.md)
 - [Implementation plan](docs/IMPLEMENTATION-PLAN.md)
 - [Architecture decisions](docs/DECISIONS.md)
+- [Demo website](docs/DEMO-SITE.md)
 
 ## License and contributions
 

@@ -1,0 +1,49 @@
+{
+  "id": "v1/positive/004-login-name-bound",
+  "protocolVersion": 1,
+  "expect": "accept",
+  "comment": "Login with name_bound policy",
+  "request": {
+    "type": "dash-auth-request",
+    "version": 1,
+    "network": "testnet",
+    "requestId": "01TESTREQUEST00000000000000",
+    "nonce_b64url": "obLD1OX2BxgpOktcbX6PkBEiM0RVZneImaq7zN3u_wA",
+    "origin": "https://example.test",
+    "domain": "example.test",
+    "action": "login",
+    "bindingPolicy": "name_bound",
+    "issuedAt": "2026-07-30T18:00:00.000Z",
+    "expiresAt": "2026-07-30T18:02:00.000Z",
+    "responseUri": "https://example.test/dash-auth/v1/respond",
+    "requestedClaims": [
+      "dash_identity_id",
+      "dpns_name"
+    ]
+  },
+  "response": {
+    "type": "dash-auth-response",
+    "version": 1,
+    "requestId": "01TESTREQUEST00000000000000",
+    "network": "testnet",
+    "bindingPolicy": "name_bound",
+    "identityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "dpnsName": "alice.dash",
+    "keyId": 2,
+    "algorithm": "dash-platform-ecdsa-recoverable-sha256d",
+    "signature_b64url": "H1gUgcnInzKL_s9o2b-7--FmDCs-t74vt5ErvoBepVWTBrcmq3LGnj2gBfrFO8QvA8UxlbL_mwidovZ94rn3CDw"
+  },
+  "canonical_hex": "534957440000000100001468747470733a2f2f6578616d706c652e746573740202001b303154455354524551554553543030303030303030303030303030a1b2c3d4e5f60718293a4b5c6d7e8f90112233445566778899aabbccddeeff00000000006a6b9120000000006a6b91981111111111111111111111111111111111111111111111111111111111111111000a616c6963652e6461736800000002",
+  "digest_sha256d_hex": "ddaaef6924f343c0314b0a854e6a1c6cacd7f5b3858eff83985b9d1b91540f69",
+  "platform": {
+    "identityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "publicKey_hex_compressed": "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+    "keyId": 2,
+    "keyPurpose": "AUTHENTICATION",
+    "securityLevel": "HIGH",
+    "disabled": false,
+    "dpnsResolvedIdentityId": "29d2S7vB453rNYFdR5Ycwt7y9haRT5fwVwL9zTmBhfV2",
+    "dpnsStatus": "finalized"
+  },
+  "cryptoOnly": true
+}
