@@ -63,14 +63,36 @@ Sideload to the Samsung Galaxy A7 over USB or copy the APK.
 4. Choose fixture identity (alice/bob), confirm name, approve.
 5. Browser tab finishes login.
 
-## Roadmap (this app)
+## Features (current)
 
-1. Camera QR scan (CameraX + offline decoder; no Play ML Kit required).
-2. BIP-39 testnet phrase import + encrypted storage (Android Keystore).
-3. Platform Kotlin/Rust SDK for identity/DPNS discovery (live testnet).
-4. Device credential / biometric gate on every approve.
-5. Per-site remembered name (already stubbed via `SiteNamePrefs`).
-6. Signed release + SBOM before sharing outside the development group.
+1. **Camera QR scan** — CameraX + ZXing (no Play ML Kit / Google services).
+2. **BIP-39 import** — phrase used once to discover identities; only HIGH auth
+   keys stored via EncryptedSharedPreferences / MasterKey.
+3. **Live testnet names** — discovery via demo-web Platform proxy
+   (`/dash-auth/v1/platform/*` using Evo SDK against Dash testnet). Real DPNS
+   names resolve (e.g. `alice` → identity on testnet).
+4. **Device unlock on approve** — biometrics if enrolled, otherwise PIN/pattern
+   (BiometricPrompt + DEVICE_CREDENTIAL).
+5. **Per-site last Dash name** — `SiteNamePrefs`.
+6. Dev fixtures (alice/bob) still available for offline demo simulator keys.
+
+### Platform proxy URL
+
+On the home screen, set **Platform discovery proxy** to the machine running
+`apps/demo-web`:
+
+| Device | Example |
+| --- | --- |
+| Emulator | `http://10.0.2.2:8787` |
+| Physical phone (same LAN) | `http://192.168.x.x:8787` |
+
+Demo-web must be running (`npm run dev`) for phrase discovery and live name
+lookup. Signing still happens only on the phone.
+
+## Still to do
+
+- Embed DAPI/Platform SDK on-device (drop dependency on demo-web proxy).
+- Signed release + SBOM before sharing outside the development group.
 
 ## Security notes
 
