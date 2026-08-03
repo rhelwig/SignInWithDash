@@ -76,6 +76,20 @@ cd apps/demo-web && npm install && npm run dev
 
 See [docs/DEMO-SITE.md](docs/DEMO-SITE.md).
 
+### Android authenticator (scaffold)
+
+Standalone testnet app under `apps/android-authenticator` (Compose UI + shared
+Kotlin protocol module). Protocol golden-vector tests run without an Android SDK:
+
+```bash
+cd apps/android-authenticator
+export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64   # or another JDK 21+
+./gradlew :protocol:test
+```
+
+APK build needs Android SDK; first sideload target is a Samsung Galaxy A7.
+See [apps/android-authenticator/README.md](apps/android-authenticator/README.md).
+
 ## Documentation
 
 - [Authentication and message flows](docs/FLOWS.md)

@@ -138,7 +138,20 @@ Exit: the entire user journey works locally without claiming Dash verification.
 
 Exit: a command-line signer using a generated testnet phrase can authenticate.
 
-### M3 — Dash Android wallet integration (demo)
+### M3a — Standalone Android authenticator (primary path)
+
+- [x] Scaffold Compose app + pure Kotlin protocol module under
+      `apps/android-authenticator`.
+- [x] Kotlin golden-vector tests pass against `test-vectors/v1`.
+- [x] Dev fixture identities (alice/bob) + paste capability URL + approve UI.
+- [x] Per-site last Dash name preference stub (`SiteNamePrefs`).
+- [ ] Camera QR scan without Play services.
+- [ ] BIP-39 testnet phrase import + Keystore-backed storage.
+- [ ] Live Platform identity/DPNS discovery (pin Kotlin/Rust SDK).
+- [ ] Biometric/device credential gate on every approval.
+- [ ] Debug APK sideload on Samsung Galaxy A7.
+
+### M3 — Dash Android wallet integration (demo, optional)
 
 - [ ] Fork and reproducibly build the current Dash Android wallet.
 - [ ] Add a bounded testnet SIWD **demo** module with no arbitrary-signing API.

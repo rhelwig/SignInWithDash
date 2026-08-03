@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SIWD Testnet</string>
+    <string name="network_badge">TESTNET ONLY</string>
+    <string name="home_title">Sign in with Dash</string>
+    <string name="home_subtitle">Approve website logins with your Dash identity. Keys stay on this device.</string>
+    <string name="action_scan">Scan login QR</string>
+    <string name="action_paste">Paste login URL</string>
+    <string name="action_setup">Set up identity (dev fixtures)</string>
+    <string name="warning_mainnet">Never enter a mainnet recovery phrase. This build is testnet-only.</string>
+    <string name="approve_only_if">Only approve if you personally started this login for the displayed site moments ago.</string>
+    <string name="display_name_hint">Names are shown without .dash; the full name is used when signing.</string>
+</resources>
