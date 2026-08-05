@@ -1,0 +1,3 @@
+# Developer APK artifacts (copy from android-authenticator build)
+public/downloads/*.apk
+src/public/downloads/*.apk

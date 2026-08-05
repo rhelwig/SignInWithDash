@@ -8,6 +8,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import org.siwd.authenticator.data.KnownSitesStore
 import org.siwd.authenticator.data.PlatformDiscovery
 import org.siwd.authenticator.data.RequestClient
 import org.siwd.authenticator.data.SecureIdentityStore
@@ -16,28 +17,16 @@ import java.net.URLDecoder
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
 
-/** Default discovery proxy = local demo site (override via shared prefs later). */
-const val DEFAULT_PLATFORM_PROXY = "http://10.0.2.2:8787"
-
 @Composable
 fun SiwdNav(initialCapabilityUrl: String?) {
     val nav = rememberNavController()
     val context = LocalContext.current
     val appCtx = context.applicationContext
     val sitePrefs = remember { SiteNamePrefs(appCtx) }
+    val knownSites = remember { KnownSitesStore(appCtx) }
     val identityStore = remember { SecureIdentityStore(appCtx) }
-    val prefs =
-        remember {
-            appCtx.getSharedPreferences("siwd_app", 0)
-        }
-    val proxyBase =
-        remember {
-            prefs.getString("platform_proxy", null)
-                ?: // Emulator → host loopback; physical device should set LAN IP of demo machine
-                DEFAULT_PLATFORM_PROXY
-        }
     val client = remember { RequestClient() }
-    val discovery = remember { PlatformDiscovery(proxyBase) }
+    val discovery = remember { PlatformDiscovery() }
 
     val start =
         if (!initialCapabilityUrl.isNullOrBlank()) {
@@ -50,10 +39,7 @@ fun SiwdNav(initialCapabilityUrl: String?) {
         composable("home") {
             HomeScreen(
                 identityStore = identityStore,
-                proxyBase = proxyBase,
-                onSaveProxy = { url ->
-                    prefs.edit().putString("platform_proxy", url).apply()
-                },
+                knownSites = knownSites,
                 onPasteUrl = { url -> nav.navigate("approve/${enc(url)}") },
                 onScan = { nav.navigate("scan") },
                 onImport = { nav.navigate("import") },
@@ -92,6 +78,7 @@ fun SiwdNav(initialCapabilityUrl: String?) {
                 capabilityUrl = url,
                 client = client,
                 sitePrefs = sitePrefs,
+                knownSites = knownSites,
                 identityStore = identityStore,
                 onDone = { nav.popBackStack("home", inclusive = false) },
                 onBack = { nav.popBackStack() },

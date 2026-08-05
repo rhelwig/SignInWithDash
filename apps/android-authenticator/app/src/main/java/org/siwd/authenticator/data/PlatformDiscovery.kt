@@ -1,32 +1,28 @@
 package org.siwd.authenticator.data
 
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
+import android.util.Log
 import org.siwd.protocol.Bip39
 import org.siwd.protocol.IdentityDerivation
 import org.siwd.protocol.Network
 import org.siwd.protocol.SiwdSigner
 import org.siwd.protocol.bytesToHex
-import java.util.concurrent.TimeUnit
 
 /**
- * Discovers Platform identities from a mnemonic by deriving HIGH auth keys
- * and querying a Platform discovery HTTP proxy (demo-web or future gateway).
+ * Discovers Platform identities from a mnemonic by deriving HIGH auth keys.
  *
- * Private keys never leave the device; only public key hashes are sent.
+ * ## Strategy (phone ↔ Platform only)
+ * 1. Optional **DPNS name assist** — resolve name, fetch identity, match keys locally.
+ * 2. **On-device DAPI** public-key-hash lookup via [OnDevicePlatform] (trusted quorum
+ *    context from Dash’s public `quorums.testnet.networks.dash.org` service).
+ *
+ * There is **no website proxy**. Private keys never leave the device; only public
+ * key hashes or a name leave for network lookup.
  */
-class PlatformDiscovery(
-    private val proxyBaseUrl: String,
-    private val http: OkHttpClient =
-        OkHttpClient.Builder()
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(45, TimeUnit.SECONDS)
-            .build(),
-) {
+class PlatformDiscovery {
+    companion object {
+        private const val TAG = "SiwdDiscovery"
+    }
+
     data class Discovered(
         val identityIndex: Int,
         val keyId: Int,
@@ -36,143 +32,224 @@ class PlatformDiscovery(
         val publicKey: ByteArray,
     )
 
+    private data class Cand(
+        val identityIndex: Int,
+        val keyId: Int,
+        val priv: ByteArray,
+        val pub: ByteArray,
+        val hash: ByteArray,
+    )
+
     fun discoverFromMnemonic(
         phrase: String,
         maxIdentityIndex: Int = 5,
         network: Network = Network.TESTNET,
+        hintName: String? = null,
+        /** Optional BIP-39 passphrase (sometimes called the 13th/25th word). Empty = none. */
+        passphrase: String = "",
     ): List<Discovered> {
-        require(Bip39.validateMnemonic(phrase)) { "Invalid recovery phrase" }
-        val seed = Bip39.mnemonicToSeed(phrase)
-        val candidates = mutableListOf<Pair<Int, ByteArray>>() // identityIndex to priv
-        val hashes = mutableListOf<String>()
-        val hashToMeta = mutableMapOf<String, Pair<Int, ByteArray>>()
+        require(network == Network.TESTNET) {
+            "This authenticator build is testnet-only"
+        }
+        val normalized =
+            phrase
+                .trim()
+                .lowercase()
+                .replace(Regex("\\s+"), " ")
+        require(Bip39.validateMnemonic(normalized)) {
+            "Invalid recovery phrase — enter BIP-39 words in order, separated by a single space"
+        }
+        val seed = Bip39.mnemonicToSeed(normalized, passphrase)
 
+        val candidates = mutableListOf<Cand>()
         for (idx in 0..maxIdentityIndex) {
-            // Prefer HIGH key id 2; also probe 3+ for extra HIGH keys
-            for (keyId in listOf(2, 3, 4, 5)) {
-                val priv =
-                    IdentityDerivation.derivePrivateKey(seed, network, idx, keyId)
+            for (keyId in 0..5) {
+                val priv = IdentityDerivation.derivePrivateKey(seed, network, idx, keyId)
                 val pub = SiwdSigner.publicKeyCompressed(priv)
-                val h = bytesToHex(IdentityDerivation.publicKeyHash160(pub))
-                hashes.add(h)
-                hashToMeta[h] = idx to priv
-                // only need one key per identity index for discovery probe set
-                if (keyId == 2) candidates.add(idx to priv)
+                val h = IdentityDerivation.publicKeyHash160(pub)
+                candidates.add(Cand(idx, keyId, priv, pub, h))
             }
         }
 
-        val body =
-            JSONObject()
-                .put("publicKeyHashes", JSONArray(hashes.distinct()))
-                .toString()
-        val req =
-            Request.Builder()
-                .url(proxyBaseUrl.trimEnd('/') + "/dash-auth/v1/platform/discover")
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
-                .post(body.toRequestBody("application/json".toMediaType()))
-                .build()
+        val errors = mutableListOf<String>()
+        val hint = hintName?.trim()?.takeIf { it.isNotEmpty() }
 
-        val responseJson =
-            http.newCall(req).execute().use { resp ->
-                val text = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) error("Platform discover failed ${resp.code}: $text")
-                JSONObject(text)
+        // Prefetch trusted quorums early so proof verification can succeed.
+        try {
+            TrustedQuorumContext.ensureFresh()
+            Log.i(TAG, "Trusted quorums: ${TrustedQuorumContext.status()}")
+        } catch (e: Exception) {
+            Log.w(TAG, "Trusted quorum prefetch: ${e.message}")
+            errors.add("trusted-quorums: ${e.message}")
+        }
+
+        if (hint != null) {
+            try {
+                val byName = discoverByNameHint(hint, seed, network, maxIdentityIndex)
+                if (byName.isNotEmpty()) {
+                    Log.i(TAG, "Name-assisted discovery found ${byName.size}")
+                    return byName
+                }
+                errors.add("name-assist: no key match for \"$hint\"")
+            } catch (e: Exception) {
+                Log.w(TAG, "Name-assisted discovery failed: ${e.message}", e)
+                errors.add("name-assist: ${e.javaClass.simpleName}: ${e.message}")
             }
+        }
 
-        val identities = responseJson.optJSONArray("identities") ?: JSONArray()
+        try {
+            val found = discoverOnDevice(candidates, seed, network, maxIdentityIndex)
+            if (found.isNotEmpty()) {
+                Log.i(TAG, "On-device discovery found ${found.size}")
+                return found
+            }
+            errors.add("on-device: no matching identity for derived keys")
+        } catch (e: Throwable) {
+            Log.w(TAG, "On-device discovery failed: ${e.message}", e)
+            errors.add("on-device: ${e.javaClass.simpleName}: ${e.message}")
+        }
+
+        error(
+            "No Platform identities found for this phrase.\n\n" +
+                "Checked identity indexes 0–$maxIdentityIndex and key ids 0–5 " +
+                "(path m/9'/1'/5'/0'/0'/i'/k') via on-device testnet DAPI.\n" +
+                "• Use the recovery phrase that created the testnet identity in DashPay.\n" +
+                "• Create/finish identity + username on testnet first if needed.\n" +
+                "• Optional: enter your DPNS name to assist discovery.\n" +
+                "• Device needs network access to testnet Platform and " +
+                "quorums.testnet.networks.dash.org\n\n" +
+                "Details:\n" + errors.joinToString("\n"),
+        )
+    }
+
+    private fun discoverByNameHint(
+        hintName: String,
+        seed: ByteArray,
+        network: Network,
+        maxIdentityIndex: Int,
+    ): List<Discovered> {
+        val label = hintName.replace(Regex("\\.dash$", RegexOption.IGNORE_CASE), "")
+        val identityId = OnDevicePlatform.resolveName(label) ?: return emptyList()
+        val identity = OnDevicePlatform.getIdentity(identityId) ?: return emptyList()
+        val match = matchIdentityKeys(identity, seed, network, maxIdentityIndex) ?: return emptyList()
+        val names =
+            OnDevicePlatform.usernamesForIdentity(identityId).ifEmpty {
+                listOf(if (label.endsWith(".dash")) label else "$label.dash")
+            }
+        return listOf(
+            Discovered(
+                identityIndex = match.identityIndex,
+                keyId = match.keyId,
+                identityId = identityId,
+                fullDpnsNames = names,
+                privateKey = match.priv,
+                publicKey = match.pub,
+            ),
+        )
+    }
+
+    private fun discoverOnDevice(
+        candidates: List<Cand>,
+        seed: ByteArray,
+        network: Network,
+        maxIdentityIndex: Int,
+    ): List<Discovered> {
         val out = mutableListOf<Discovered>()
+        val seenIds = mutableSetOf<String>()
+        var lastError: Exception? = null
+        var lookups = 0
+        var hits = 0
 
-        for (i in 0 until identities.length()) {
-            val idObj = identities.getJSONObject(i)
-            val identityId = idObj.getString("identityId")
-            val namesArr = idObj.optJSONArray("usernames") ?: JSONArray()
-            val names =
-                (0 until namesArr.length()).map { namesArr.getString(it) }.map {
-                    if (it.endsWith(".dash")) it else "$it.dash"
-                }
-            val keys = idObj.optJSONArray("keys") ?: JSONArray()
-            // Find a HIGH auth key we can derive
-            var matched: Discovered? = null
-            for (ki in 0 until keys.length()) {
-                val k = keys.getJSONObject(ki)
-                val keyId = k.optInt("id", k.optInt("keyId", -1))
-                val level = k.optString("securityLevel", k.optString("level", "")).uppercase()
-                val purpose = k.optString("purpose", k.optString("keyPurpose", "")).uppercase()
-                val disabled = k.optBoolean("disabled", false)
-                if (disabled) continue
-                if (!purpose.contains("AUTH")) continue
-                if (!level.contains("HIGH")) continue
-                // Try identity indices we derived
-                for (idx in 0..maxIdentityIndex) {
-                    val priv =
-                        IdentityDerivation.derivePrivateKey(seed, network, idx, keyId)
-                    val pub = SiwdSigner.publicKeyCompressed(priv)
-                    val pubHex = bytesToHex(pub)
-                    val reported = k.optString("publicKeyHex", "").lowercase()
-                    if (reported.isNotEmpty() && reported != pubHex) continue
-                    // If no reported key, accept first HIGH we can derive for this id via hash match
-                    matched =
-                        Discovered(
-                            identityIndex = idx,
-                            keyId = keyId,
-                            identityId = identityId,
-                            fullDpnsNames = names,
-                            privateKey = priv,
-                            publicKey = pub,
-                        )
-                    break
-                }
-                if (matched != null) break
-            }
-            // Fallback: identity index from hash map
-            if (matched == null) {
-                val found = responseJson.optJSONArray("found") ?: JSONArray()
-                for (fi in 0 until found.length()) {
-                    val f = found.getJSONObject(fi)
-                    val ids = f.optJSONArray("identityIds") ?: continue
-                    var owns = false
-                    for (j in 0 until ids.length()) {
-                        if (ids.getString(j) == identityId) owns = true
-                    }
-                    if (!owns) continue
-                    val h = f.getString("publicKeyHash")
-                    val meta = hashToMeta[h] ?: continue
-                    val priv = meta.second
-                    val pub = SiwdSigner.publicKeyCompressed(priv)
-                    matched =
-                        Discovered(
-                            identityIndex = meta.first,
-                            keyId = 2,
-                            identityId = identityId,
-                            fullDpnsNames = names,
-                            privateKey = priv,
-                            publicKey = pub,
-                        )
-                    break
-                }
-            }
-            if (matched != null) out.add(matched)
+        val uniqueByHash = linkedMapOf<String, Cand>()
+        for (c in candidates) {
+            uniqueByHash.putIfAbsent(bytesToHex(c.hash), c)
         }
-        return out.distinctBy { it.identityId }
+
+        for ((_, c) in uniqueByHash) {
+            lookups++
+            val identity =
+                try {
+                    OnDevicePlatform.getIdentityByPublicKeyHash(c.hash)
+                } catch (e: Exception) {
+                    lastError = e
+                    null
+                } ?: continue
+            hits++
+            val identityId = identity.id.toString()
+            if (!seenIds.add(identityId)) continue
+
+            val match = matchIdentityKeys(identity, seed, network, maxIdentityIndex) ?: continue
+            val names = OnDevicePlatform.usernamesForIdentity(identityId)
+            out.add(
+                Discovered(
+                    identityIndex = match.identityIndex,
+                    keyId = match.keyId,
+                    identityId = identityId,
+                    fullDpnsNames = names.ifEmpty { listOf("unnamed.dash") },
+                    privateKey = match.priv,
+                    publicKey = match.pub,
+                ),
+            )
+        }
+        if (out.isEmpty() && lastError != null && hits == 0) {
+            throw lastError
+        }
+        Log.i(
+            TAG,
+            "On-device discovery: lookups=$lookups hits=$hits identities=${out.size}",
+        )
+        return out
     }
 
-    fun resolveName(name: String): String? {
-        val label = name.replace(Regex("\\.dash$", RegexOption.IGNORE_CASE), "")
-        val req =
-            Request.Builder()
-                .url(
-                    proxyBaseUrl.trimEnd('/') +
-                        "/dash-auth/v1/platform/resolve?name=" +
-                        java.net.URLEncoder.encode(label, "UTF-8"),
-                )
-                .get()
-                .build()
-        http.newCall(req).execute().use { resp ->
-            val text = resp.body?.string().orEmpty()
-            if (!resp.isSuccessful) return null
-            val o = JSONObject(text)
-            return if (o.isNull("identityId")) null else o.getString("identityId")
+    private data class MatchedKey(
+        val identityIndex: Int,
+        val keyId: Int,
+        val priv: ByteArray,
+        val pub: ByteArray,
+    )
+
+    private fun matchIdentityKeys(
+        identity: org.dashj.platform.dpp.identity.Identity,
+        seed: ByteArray,
+        network: Network,
+        maxIdentityIndex: Int,
+    ): MatchedKey? {
+        val ordered =
+            identity.publicKeys.sortedBy { key ->
+                when {
+                    OnDevicePlatform.isEligibleSiwdKey(key) -> 0
+                    key.securityLevel.name.contains("HIGH", ignoreCase = true) -> 1
+                    key.securityLevel.name.contains("CRITICAL", ignoreCase = true) -> 2
+                    else -> 3
+                }
+            }
+        for (key in ordered) {
+            if (key.disabledAt != null) continue
+            val purposeOk =
+                key.purpose.name.contains("AUTH", ignoreCase = true) ||
+                    key.purpose == org.dashj.platform.sdk.Purpose.AUTHENTICATION
+            if (!purposeOk) continue
+            if (key.securityLevel.name.contains("MASTER", ignoreCase = true)) continue
+            for (idx in 0..maxIdentityIndex) {
+                val priv = IdentityDerivation.derivePrivateKey(seed, network, idx, key.id)
+                val pub = SiwdSigner.publicKeyCompressed(priv)
+                if (pub.contentEquals(key.data)) {
+                    return MatchedKey(idx, key.id, priv, pub)
+                }
+                val h = IdentityDerivation.publicKeyHash160(pub)
+                if (IdentityDerivation.publicKeyHash160(key.data).contentEquals(h)) {
+                    return MatchedKey(idx, key.id, priv, pub)
+                }
+            }
         }
+        return null
     }
+
+    /** Resolve DPNS name via on-device DAPI only. */
+    fun resolveName(name: String): String? =
+        try {
+            OnDevicePlatform.resolveName(name)
+        } catch (_: Exception) {
+            null
+        }
 }

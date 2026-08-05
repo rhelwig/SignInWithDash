@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cleartext HTTP only for local/dev demo hosts.
+  Production SIWD sites (HTTPS) are unrestricted by this file.
+  Debug self-test may still target LAN demo-web; release builds should use HTTPS only.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">10.0.2.2</domain>
+        <!-- Emulator host loopback; physical LAN demos use user-pasted HTTPS or debug cleartext below -->
+    </domain-config>
+    <!--
+      Optional local LAN host for development only.
+      Prefer HTTPS production origins (e.g. https://dashlogin.ronhelwig.com).
+      Keep this list empty of production hostnames.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">10.0.0.58</domain>
+    </domain-config>
+</network-security-config>

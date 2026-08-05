@@ -17,17 +17,22 @@
   "dependencies": {
     "@dashevo/evo-sdk": "^4.1.0",
     "@hono/node-server": "^1.14.3",
+    "@noble/curves": "^2.2.0",
+    "@noble/hashes": "^2.2.0",
     "@siwd/protocol": "file:../../packages/protocol",
     "better-sqlite3": "^11.10.0",
     "cookie": "^0.7.2",
+    "dotenv": "^17.4.2",
     "hono": "^4.7.10",
     "nanoid": "^5.1.5",
+    "nodemailer": "^9.0.3",
     "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/cookie": "^0.6.0",
     "@types/node": "^22.15.21",
+    "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.5",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

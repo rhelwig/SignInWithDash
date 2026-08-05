@@ -146,6 +146,136 @@ footer {
   margin: 1rem 0;
 }
 
+/* Accounts directory — multi-line cards instead of a wide table */
+.account-list-panel {
+  padding: 0.5rem 0;
+}
+
+.account-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.account-card {
+  padding: 1.15rem 1.35rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-card:last-child {
+  border-bottom: none;
+}
+
+.account-card + .account-card {
+  /* Extra separation so entries don't blur together */
+  border-top: 3px solid #243447;
+  margin-top: 0;
+}
+
+.account-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.account-card-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 0.75rem;
+  min-width: 0;
+}
+
+.account-name {
+  margin: 0;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.account-binding {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.account-you-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.45rem;
+  border-radius: 999px;
+  background: #16324a;
+  color: var(--accent2);
+  border: 1px solid var(--accent);
+}
+
+.account-card-you {
+  background: rgba(0, 141, 228, 0.06);
+}
+
+.account-meta {
+  margin: 0;
+  display: grid;
+  gap: 0.55rem 1.25rem;
+}
+
+@media (min-width: 640px) {
+  .account-meta {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.account-meta > div {
+  display: grid;
+  grid-template-columns: 6.5rem 1fr;
+  gap: 0.25rem 0.75rem;
+  align-items: start;
+  min-width: 0;
+}
+
+.account-meta dt {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding-top: 0.1rem;
+}
+
+.account-meta dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.account-times {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.account-time-utc {
+  font-size: 0.88em;
+}
+
+.account-time-local {
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+
+.sessions-table td {
+  vertical-align: top;
+}
+
 .hero h1 {
   margin: 0 0 0.5rem;
   font-size: clamp(1.6rem, 4vw, 2.2rem);
@@ -296,7 +426,9 @@ label {
 }
 
 select,
-input[type="text"] {
+input[type="text"],
+input[type="email"],
+input[type="number"] {
   width: 100%;
   padding: 0.5rem 0.65rem;
   border-radius: 8px;
@@ -373,6 +505,39 @@ input[type="text"] {
 .err-inline {
   color: var(--danger);
   font-weight: 700;
+}
+
+.footer-note {
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+  max-width: 52rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.check-row input {
+  width: auto;
+  margin-top: 0.25rem;
+}
+
+.invite-msg {
+  width: 100%;
+  min-height: 12rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  resize: vertical;
 }
 
 @media (max-width: 520px) {

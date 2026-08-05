@@ -56,7 +56,7 @@ Sideload to the Samsung Galaxy A7 over USB or copy the APK.
 
 ## Dev flow with localhost demo
 
-1. Run `apps/demo-web` (`npm run dev` → http://127.0.0.1:8787).
+1. Run `apps/demo-web` (`npm run dev` → http://127.0.0.1:8792).
 2. Open Register/Sign in; copy the capability URL.
 3. On the phone (or emulator), paste the URL into the authenticator.
    - Emulator can reach host machine via `10.0.2.2` instead of `127.0.0.1`.
@@ -68,30 +68,36 @@ Sideload to the Samsung Galaxy A7 over USB or copy the APK.
 1. **Camera QR scan** — CameraX + ZXing (no Play ML Kit / Google services).
 2. **BIP-39 import** — phrase used once to discover identities; only HIGH auth
    keys stored via EncryptedSharedPreferences / MasterKey.
-3. **Live testnet names** — discovery via demo-web Platform proxy
-   (`/dash-auth/v1/platform/*` using Evo SDK against Dash testnet). Real DPNS
-   names resolve (e.g. `alice` → identity on testnet).
+3. **Live testnet identity discovery** — on-device only (no website proxy).
+   Trusted quorum public keys are fetched from Dash’s public service
+   `https://quorums.testnet.networks.dash.org/` (same source as Evo
+   WasmTrustedContext). Optional DPNS name assist on import.  
+   **Note:** native `Platform()` (dash-sdk) still needs hardening on some
+   devices (can native-abort during SDK create); trusted-quorum fetch already
+   works. Work continues until DAPI identity reads are stable without a proxy.
 4. **Device unlock on approve** — biometrics if enrolled, otherwise PIN/pattern
    (BiometricPrompt + DEVICE_CREDENTIAL).
 5. **Per-site last Dash name** — `SiteNamePrefs`.
-6. Dev fixtures (alice/bob) still available for offline demo simulator keys.
+6. **Known sites list** — after a successful approve, open that website again
+   from the authenticator on the same device.
+7. Dev fixtures (alice/bob) still available for offline demo simulator keys.
 
-### Platform proxy URL
+### Platform discovery
 
-On the home screen, set **Platform discovery proxy** to the machine running
-`apps/demo-web`:
+Default: **on-device** (`PlatformDiscovery` + `OnDevicePlatform` using
+`org.dashj.platform:dash-sdk-*` against **testnet**).
 
-| Device | Example |
-| --- | --- |
-| Emulator | `http://10.0.2.2:8787` |
-| Physical phone (same LAN) | `http://192.168.x.x:8787` |
+Optional advanced field on the home screen can point at demo-web
+(`http://127.0.0.1:8792` + `adb reverse`) only for debugging. Leave it empty
+for normal use so other people do not depend on your machine.
 
-Demo-web must be running (`npm run dev`) for phrase discovery and live name
-lookup. Signing still happens only on the phone.
+Signing always happens only on the phone. The relying website (demo-web)
+still verifies signatures on its own backend.
 
 ## Still to do
 
-- Embed DAPI/Platform SDK on-device (drop dependency on demo-web proxy).
+- Harden on-device Platform (error UX, retries, GrapheneOS matrix).
+- Mainnet network flavor (gated; separate from testnet builds).
 - Signed release + SBOM before sharing outside the development group.
 
 ## Security notes

@@ -48,6 +48,9 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
@@ -75,5 +78,26 @@ dependencies {
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.compose.material:material-icons-extended")
 
+    // On-device Dash Platform (same stack as DashPay wallet; no demo-web proxy required)
+    implementation("org.dashj.platform:dash-sdk-android:4.0.0")
+    implementation("org.dashj.platform:dash-sdk-kotlin:4.0.0") {
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    }
+    implementation("org.dashj.platform:dash-sdk-java:4.0.0")
+    implementation("org.dashj:dashj-core:22.0.4") {
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+        exclude(group = "org.bouncycastle", module = "bcprov-jdk15on")
+    }
+    implementation("org.dashj.android:dashj-bls-android:1.0.1")
+    implementation("org.dashj.android:dashj-x11-android:1.0.0")
+    implementation("org.slf4j:slf4j-android:1.7.36")
+    // Single BouncyCastle for app + protocol + dashj
+    implementation("org.bouncycastle:bcprov-jdk18on:1.79")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
+}
+
+configurations.all {
+    exclude(group = "org.bouncycastle", module = "bcprov-jdk15to18")
+    exclude(group = "org.bouncycastle", module = "bcprov-jdk15on")
 }

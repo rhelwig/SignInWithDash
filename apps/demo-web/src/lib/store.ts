@@ -26,6 +26,7 @@ import {
   sha256Hex,
   timingSafeEqualHex,
 } from "./crypto-util.js";
+import { evaluateAccountAccess } from "./access.js";
 import { getPlatformKeyForSiwd } from "./platform.js";
 import { getSimulatorPlatform } from "./simulator-keys.js";
 
@@ -60,6 +61,8 @@ export interface AccountRow {
   status: string;
   created_at: string;
   last_login_at: string | null;
+  /** Optional contact email saved by the user (never required for SIWD login). */
+  email: string | null;
 }
 
 /** How a session was closed server-side (null while active). */
@@ -67,7 +70,8 @@ export type SessionEndReason =
   | "logout"
   | "revoked"
   | "revoke_others"
-  | "deactivate";
+  | "deactivate"
+  | "banned";
 
 export interface SessionRow {
   id: string;
@@ -592,6 +596,17 @@ export function finishRequest(
           http: 409,
         });
       }
+      const gate = evaluateAccountAccess({
+        identityId: row.identity_id!,
+        dpnsName: row.dpns_name!,
+        isNewAccount: true,
+      });
+      if (!gate.allow) {
+        throw Object.assign(new Error(gate.message), {
+          code: gate.code,
+          http: 403,
+        });
+      }
       const info = d
         .prepare(
           `INSERT INTO accounts (identity_id, dpns_name, binding_policy, status, created_at, last_login_at)
@@ -603,16 +618,34 @@ export function finishRequest(
         .get(info.lastInsertRowid) as AccountRow;
       isNew = true;
     } else {
-      if (existing.status !== "active") {
+      // Re-check ban list (name/identity may have been banned after account creation)
+      const gate = evaluateAccountAccess({
+        identityId: row.identity_id!,
+        dpnsName: row.dpns_name!,
+        isNewAccount: false,
+      });
+      if (!gate.allow) {
+        throw Object.assign(new Error(gate.message), {
+          code: gate.code,
+          http: 403,
+        });
+      }
+      if (existing.status === "banned") {
+        // Ban list entry was lifted; restore the account on successful sign-in
+        d.prepare(
+          `UPDATE accounts SET status = 'active', dpns_name = ?, last_login_at = ? WHERE id = ?`,
+        ).run(row.dpns_name, ts, existing.id);
+      } else if (existing.status !== "active") {
         throw Object.assign(new Error("Account deactivated"), {
           code: "conflict",
           http: 409,
         });
+      } else {
+        // identity_bound: name may update as handle
+        d.prepare(
+          `UPDATE accounts SET dpns_name = ?, last_login_at = ? WHERE id = ?`,
+        ).run(row.dpns_name, ts, existing.id);
       }
-      // identity_bound: name may update as handle
-      d.prepare(
-        `UPDATE accounts SET dpns_name = ?, last_login_at = ? WHERE id = ?`,
-      ).run(row.dpns_name, ts, existing.id);
       account = d
         .prepare(`SELECT * FROM accounts WHERE id = ?`)
         .get(existing.id) as AccountRow;
@@ -661,7 +694,8 @@ export function getSession(
   const row = getDb()
     .prepare(
       `SELECT s.*, a.id as a_id, a.identity_id, a.dpns_name, a.binding_policy,
-              a.status as a_status, a.created_at as a_created, a.last_login_at
+              a.status as a_status, a.created_at as a_created, a.last_login_at,
+              a.email as a_email
        FROM sessions s
        JOIN accounts a ON a.id = s.account_id
        WHERE s.id = ? AND s.revoked_at IS NULL AND a.status = 'active'`,
@@ -675,6 +709,7 @@ export function getSession(
         a_status: string;
         a_created: string;
         last_login_at: string | null;
+        a_email: string | null;
       })
     | undefined;
   if (!row) return null;
@@ -697,8 +732,20 @@ export function getSession(
       status: row.a_status,
       created_at: row.a_created,
       last_login_at: row.last_login_at,
+      email: row.a_email ?? null,
     },
   };
+}
+
+/** Save or clear the optional contact email on an account. */
+export function setAccountEmail(
+  accountId: number,
+  email: string | null,
+): void {
+  const value = email && email.trim() ? email.trim() : null;
+  getDb()
+    .prepare(`UPDATE accounts SET email = ? WHERE id = ?`)
+    .run(value, accountId);
 }
 
 export function endSession(

@@ -402,3 +402,47 @@ Integrators who need longer sessions (for example media sites) may add an
 explicit “stay signed in” control with a documented shorter absolute lifetime,
 re-auth for sensitive actions, and revoke UI. That is site policy layered on
 SIWD, not part of the wire protocol.
+
+## D-026 — Site access policy: allowlist, user invites, bans
+
+**Decision:** Relying sites (starting with the SIWD demo) may enforce **local
+access policy** layered on top of successful SIWD verification:
+
+1. **Allowlist of Dash names** that may *create* new accounts. Existing accounts
+   may still sign in unless banned.
+2. **User-driven growth:** site owners may allow signed-in users to add up to
+   **N** Dash names to that allowlist (invites) and provide a copy-paste invite
+   message for arbitrary messaging apps.
+3. **Ban lists** of Dash names and/or identity IDs: blocked from create and
+   login; matching existing accounts are revoked/banned immediately.
+
+This is **not** part of the SIWD wire protocol. It is site policy applied at
+finish after signature and Platform (or simulator) checks succeed. Configured
+site owners may bootstrap create even when not listed on the allowlist.  
+**Date:** 2026-08-03  
+**Status:** Accepted
+
+Rationale:
+
+- Many sites need membership control without passwords or email.
+- Dash names are natural invite targets for organic growth.
+- Bans need a hard local effect (session revoke) independent of Platform.
+
+## D-027 — Optional contact email on the demo site (not SIWD auth)
+
+**Decision:** The demo website may offer a **signed-in contact form** so testers
+can send feedback to the host. Configuration is env-driven
+(`SIWD_CONTACT_TO`, optional SMTP). There is **no default recipient** in the
+repository so self-hosters and the primary host each set their own inbox.
+Contact requires the user to enter a reply-to email. Saving that address on the
+account is **opt-in** (checkbox default off). Public account lists show
+associated emails only in **obfuscated** form, or state that none is associated.
+SIWD login remains passwordless and does not require email.  
+**Date:** 2026-08-04  
+**Status:** Accepted
+
+Rationale:
+
+- Feedback channels need a reply address without turning email into an auth factor.
+- Host inboxes and SMTP credentials must stay out of git.
+- Account transparency for testers must not dump full third-party emails.

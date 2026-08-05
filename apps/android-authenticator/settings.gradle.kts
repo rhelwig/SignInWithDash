@@ -11,6 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // dashj-platform snapshots if needed
+        maven { url = uri("https://s01.oss.sonatype.org/content/repositories/snapshots/") }
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

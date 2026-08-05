@@ -11,7 +11,7 @@ export type RequestStatus =
   | "cancelled"
   | "expired";
 
-export type AccountStatus = "active" | "deactivated";
+export type AccountStatus = "active" | "deactivated" | "banned";
 
 let db: Database.Database | null = null;
 
@@ -35,6 +35,7 @@ function migrate(d: Database.Database) {
       status TEXT NOT NULL DEFAULT 'active',
       created_at TEXT NOT NULL,
       last_login_at TEXT,
+      email TEXT,
       UNIQUE(identity_id),
       UNIQUE(dpns_name)
     );
@@ -81,15 +82,58 @@ function migrate(d: Database.Database) {
       window_start INTEGER NOT NULL,
       count INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS site_access_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      allowlist_enabled INTEGER NOT NULL DEFAULT 0,
+      user_invites_enabled INTEGER NOT NULL DEFAULT 1,
+      invites_per_user INTEGER NOT NULL DEFAULT 3
+    );
+
+    CREATE TABLE IF NOT EXISTS allowlist_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      dpns_name TEXT NOT NULL UNIQUE,
+      source TEXT NOT NULL,
+      invited_by_account_id INTEGER REFERENCES accounts(id),
+      created_at TEXT NOT NULL,
+      note TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS ban_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      reason TEXT,
+      created_by_account_id INTEGER REFERENCES accounts(id),
+      created_at TEXT NOT NULL,
+      UNIQUE(kind, value)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_allowlist_dpns ON allowlist_entries(dpns_name);
+    CREATE INDEX IF NOT EXISTS idx_ban_kind_value ON ban_entries(kind, value);
   `);
 
   // Lightweight migrations for existing demo DBs
-  const cols = d
+  const sessionCols = d
     .prepare(`PRAGMA table_info(sessions)`)
     .all() as Array<{ name: string }>;
-  if (!cols.some((c) => c.name === "end_reason")) {
+  if (!sessionCols.some((c) => c.name === "end_reason")) {
     d.exec(`ALTER TABLE sessions ADD COLUMN end_reason TEXT`);
   }
+
+  const accountCols = d
+    .prepare(`PRAGMA table_info(accounts)`)
+    .all() as Array<{ name: string }>;
+  if (!accountCols.some((c) => c.name === "email")) {
+    d.exec(`ALTER TABLE accounts ADD COLUMN email TEXT`);
+  }
+
+  // Singleton access settings row
+  d.prepare(
+    `INSERT OR IGNORE INTO site_access_settings
+      (id, allowlist_enabled, user_invites_enabled, invites_per_user)
+     VALUES (1, 0, 1, 3)`,
+  ).run();
 }
 
 export function closeDb() {

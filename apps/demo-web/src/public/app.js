@@ -1,4 +1,4 @@
-/* Minimal client helpers: copy link + poll auth status + finish. */
+/* Minimal client helpers: copy link + local times + poll auth status + finish. */
 (function () {
   function $(sel, root) {
     return (root || document).querySelector(sel);
@@ -11,17 +11,47 @@
     var el = sel ? document.querySelector(sel) : null;
     if (!el) return;
     var text = el.value || el.textContent || "";
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(text).then(function () {
-        t.textContent = "Copied";
-        setTimeout(function () {
-          t.textContent = "Copy";
-        }, 1500);
-      });
-    } else {
-      el.select && el.select();
-      document.execCommand("copy");
+    var original = t.textContent;
+    function markCopied() {
+      t.textContent = "Copied";
+      setTimeout(function () {
+        t.textContent = original;
+      }, 1500);
     }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(markCopied);
+    } else {
+      if (el.select) el.select();
+      document.execCommand("copy");
+      markCopied();
+    }
+  });
+
+  // Friendly local datetime under UTC (browser timezone).
+  function formatLocalTime(iso) {
+    try {
+      var d = new Date(iso);
+      if (isNaN(d.getTime())) return "";
+      return d.toLocaleString(undefined, {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  document.querySelectorAll("[data-local-time]").forEach(function (el) {
+    var iso = el.getAttribute("data-local-time");
+    if (!iso) return;
+    var local = formatLocalTime(iso);
+    if (local) el.textContent = local;
+    else el.textContent = "";
   });
 
   var root = $("#auth-flow");

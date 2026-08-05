@@ -98,14 +98,58 @@ export async function identitiesByPublicKeyHash(
   publicKeyHashHex: string,
 ): Promise<string[]> {
   const hash = publicKeyHashHex.replace(/^0x/, "").toLowerCase();
-  const r = (await runWorker(["discover", hash])) as {
-    found: Array<{ publicKeyHash: string; identityIds: string[] }>;
-  };
+  const r = await discoverByPublicKeyHashes([hash]);
   const ids = new Set<string>();
   for (const f of r.found || []) {
     f.identityIds?.forEach((id) => ids.add(id));
   }
   return [...ids];
+}
+
+/**
+ * Batch public-key-hash discovery in one worker process (one WASM connect).
+ */
+export async function discoverByPublicKeyHashes(
+  publicKeyHashes: string[],
+): Promise<{
+  found: Array<{ publicKeyHash: string; identityIds: string[] }>;
+  identities: Array<{
+    identityId: string;
+    keys: Array<{
+      id: number;
+      purpose: string;
+      securityLevel: string;
+      disabled: boolean;
+      publicKeyHex?: string;
+    }>;
+    usernames: string[];
+  }>;
+}> {
+  const hashes = publicKeyHashes
+    .map((h) => h.replace(/^0x/, "").toLowerCase())
+    .filter(Boolean);
+  if (!hashes.length) {
+    return { found: [], identities: [] };
+  }
+  // Worker CLI takes a single comma-separated arg for discover.
+  const r = (await runWorker(["discover", hashes.join(",")])) as {
+    found: Array<{ publicKeyHash: string; identityIds: string[] }>;
+    identities: Array<{
+      identityId: string;
+      keys: Array<{
+        id: number;
+        purpose: string;
+        securityLevel: string;
+        disabled: boolean;
+        publicKeyHex?: string;
+      }>;
+      usernames: string[];
+    }>;
+  };
+  return {
+    found: r.found || [],
+    identities: r.identities || [],
+  };
 }
 
 /**

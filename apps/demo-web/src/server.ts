@@ -12,6 +12,7 @@ import {
   type BindingPolicy,
 } from "@siwd/protocol";
 import {
+  CONTACT_ENABLED,
   ENABLE_SIMULATOR,
   HOST,
   PORT,
@@ -19,12 +20,26 @@ import {
   VERIFY_MODE,
   absoluteUrl,
 } from "./lib/config.js";
+import { isValidEmailShape } from "./lib/display.js";
+import { sendContactMail } from "./lib/mail.js";
 import {
+  discoverByPublicKeyHashes,
   fetchIdentitySummary,
-  identitiesByPublicKeyHash,
   resolveDpnsName,
 } from "./lib/platform.js";
 import { getDb } from "./lib/db.js";
+import {
+  addAllowlistEntry,
+  addBan,
+  createInvite,
+  getAccessSettings,
+  isSiteOwner,
+  listAllowlist,
+  listBans,
+  removeAllowlistEntry,
+  removeBan,
+  updateAccessSettings,
+} from "./lib/access.js";
 import {
   bindingMatches,
   cancelRequest,
@@ -41,16 +56,21 @@ import {
   respondToRequest,
   endAllSessions,
   endSession,
+  setAccountEmail,
   toPublicRequest,
 } from "./lib/store.js";
 import { getSimulatorSigner } from "./lib/simulator-keys.js";
 import {
+  accessPage,
   accountsPage,
   authCeremonyPage,
+  contactPage,
   getStartedPage,
   homePage,
   howItWorksPage,
+  howToTestPage,
   mePage,
+  privacyPage,
   securityPage,
   simulatorPage,
 } from "./pages/content.js";
@@ -103,11 +123,30 @@ app.use(
   }),
 );
 
+// Developer downloads (APK, etc.) — files live in apps/demo-web/public/downloads
+app.use(
+  "/downloads/*",
+  serveStatic({
+    root: join(__dirname, "public", "downloads"),
+    rewriteRequestPath: (p) => p.replace(/^\/downloads\/?/, "") || "index.html",
+  }),
+);
+
 // --- HTML pages ---
 
 app.get("/", async (c) => {
   const s = sessionFrom(c);
   return c.html(await homePage(s?.account ?? null));
+});
+
+app.get("/how-to-test", (c) => {
+  const s = sessionFrom(c);
+  return c.html(howToTestPage(s?.account ?? null));
+});
+
+app.get("/privacy", (c) => {
+  const s = sessionFrom(c);
+  return c.html(privacyPage(s?.account ?? null));
 });
 
 app.get("/how-it-works", (c) => {
@@ -137,6 +176,236 @@ app.get("/me", (c) => {
   const s = sessionFrom(c);
   if (!s) return c.redirect("/login?next=" + encodeURIComponent("/me"));
   return c.html(mePage(s.account, listSessions(s.account.id)));
+});
+
+app.get("/contact", (c) => {
+  const s = sessionFrom(c);
+  if (!s) {
+    return c.redirect("/login?next=" + encodeURIComponent("/contact"));
+  }
+  return c.html(
+    contactPage({
+      account: s.account,
+      enabled: CONTACT_ENABLED,
+    }),
+  );
+});
+
+app.post("/contact", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) {
+    return c.redirect("/login?next=" + encodeURIComponent("/contact"));
+  }
+  if (!CONTACT_ENABLED) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        enabled: false,
+        error: "Contact form is not configured on this deployment.",
+      }),
+    );
+  }
+  if (!rateLimit(`contact:${clientKey(c)}`, 8, 60_000)) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        error: "Too many messages — try again shortly.",
+      }),
+    );
+  }
+  const body = await c.req.parseBody();
+  const email = String(body.email || "").trim();
+  const subject = String(body.subject || "").trim();
+  const message = String(body.message || "").trim();
+  const saveEmail = body.saveEmail === "1" || body.saveEmail === "on";
+
+  const values = { email, subject, message, saveEmail };
+
+  if (!email || !isValidEmailShape(email)) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        error: "Please enter a valid email address so the host can reply.",
+        values,
+      }),
+    );
+  }
+  if (!message || message.length < 3) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        error: "Please enter a message.",
+        values,
+      }),
+    );
+  }
+  if (message.length > 8000) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        error: "Message is too long (max 8000 characters).",
+        values,
+      }),
+    );
+  }
+
+  const sent = await sendContactMail({
+    replyTo: email,
+    subject,
+    message,
+    dashName: s.account.dpns_name,
+    identityId: s.account.identity_id,
+    accountId: s.account.id,
+    saveEmailRequested: saveEmail,
+  });
+
+  if (!sent.ok) {
+    return c.html(
+      contactPage({
+        account: s.account,
+        error: sent.message,
+        values,
+      }),
+    );
+  }
+
+  if (saveEmail) {
+    setAccountEmail(s.account.id, email);
+    s.account.email = email;
+  }
+
+  const flash =
+    sent.transport === "log"
+      ? "Message recorded (this host logs contact mail instead of SMTP). Thank you!"
+      : "Message sent. Thank you!";
+
+  return c.html(
+    contactPage({
+      account: s.account,
+      flash,
+    }),
+  );
+});
+
+function renderAccess(
+  c: { html: (s: string) => Response | Promise<Response> },
+  account: NonNullable<ReturnType<typeof sessionFrom>>["account"],
+  extra?: { flash?: string; inviteMessage?: string | null; error?: string | null },
+) {
+  return c.html(
+    accessPage({
+      account,
+      settings: getAccessSettings(),
+      allowlist: listAllowlist(),
+      bans: listBans(),
+      flash: extra?.flash,
+      inviteMessage: extra?.inviteMessage,
+      error: extra?.error,
+    }),
+  );
+}
+
+app.get("/access", (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login?next=" + encodeURIComponent("/access"));
+  return renderAccess(c, s.account);
+});
+
+app.post("/access/invite", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login?next=" + encodeURIComponent("/access"));
+  if (!rateLimit(`invite:${clientKey(c)}`, 20, 60_000)) {
+    return renderAccess(c, s.account, { error: "Too many invites — try again shortly." });
+  }
+  const body = await c.req.parseBody();
+  const result = createInvite(s.account, String(body.dpnsName || ""));
+  if (!result.ok) {
+    return renderAccess(c, s.account, { error: result.message });
+  }
+  return renderAccess(c, s.account, {
+    flash: "Invite added.",
+    inviteMessage: result.message,
+  });
+});
+
+app.post("/access/settings", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login");
+  if (!isSiteOwner(s.account)) {
+    return renderAccess(c, s.account, { error: "Only site owners can change settings." });
+  }
+  const body = await c.req.parseBody();
+  updateAccessSettings({
+    allowlist_enabled: body.allowlistEnabled === "1",
+    user_invites_enabled: body.userInvitesEnabled === "1",
+    invites_per_user: Number.parseInt(String(body.invitesPerUser || "3"), 10) || 0,
+  });
+  return renderAccess(c, s.account, { flash: "Settings saved." });
+});
+
+app.post("/access/allowlist/add", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login");
+  if (!isSiteOwner(s.account)) {
+    return renderAccess(c, s.account, { error: "Only site owners can edit the allowlist." });
+  }
+  const body = await c.req.parseBody();
+  const result = addAllowlistEntry({
+    dpnsName: String(body.dpnsName || ""),
+    source: "owner",
+    invitedByAccountId: s.account.id,
+  });
+  if (!result.ok) {
+    return renderAccess(c, s.account, { error: result.message });
+  }
+  return renderAccess(c, s.account, { flash: "Allowlist entry added." });
+});
+
+app.post("/access/allowlist/remove", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login");
+  if (!isSiteOwner(s.account)) {
+    return renderAccess(c, s.account, { error: "Only site owners can edit the allowlist." });
+  }
+  const body = await c.req.parseBody();
+  removeAllowlistEntry(Number(body.id));
+  return renderAccess(c, s.account, { flash: "Allowlist entry removed." });
+});
+
+app.post("/access/ban/add", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login");
+  if (!isSiteOwner(s.account)) {
+    return renderAccess(c, s.account, { error: "Only site owners can manage bans." });
+  }
+  const body = await c.req.parseBody();
+  const kind = String(body.kind || "") === "identity_id" ? "identity_id" : "dpns_name";
+  const result = addBan({
+    kind,
+    value: String(body.value || ""),
+    reason: String(body.reason || "") || null,
+    createdByAccountId: s.account.id,
+  });
+  if (!result.ok) {
+    return renderAccess(c, s.account, { error: result.message });
+  }
+  return renderAccess(c, s.account, {
+    flash: `Ban added.${result.accountsBanned ? ` ${result.accountsBanned} existing account(s) banned and sessions revoked.` : ""}`,
+  });
+});
+
+app.post("/access/ban/remove", async (c) => {
+  const s = sessionFrom(c);
+  if (!s) return c.redirect("/login");
+  if (!isSiteOwner(s.account)) {
+    return renderAccess(c, s.account, { error: "Only site owners can manage bans." });
+  }
+  const body = await c.req.parseBody();
+  removeBan(Number(body.id));
+  return renderAccess(c, s.account, {
+    flash:
+      "Ban lifted. Matching accounts can sign in again and will be restored if they were only banned by this list.",
+  });
 });
 
 app.post("/logout", (c) => {
@@ -252,7 +521,16 @@ async function startAuth(
 }
 
 app.get("/login", (c) => startAuth(c, "login"));
-app.get("/register", (c) => startAuth(c, "register"));
+// Protocol still allows action=register, but this demo auto-provisions on first
+// successful login — keep /register as a stable alias for old links/invites.
+app.get("/register", (c) => {
+  const q = c.req.query("next");
+  const dest =
+    q && q.startsWith("/") && !q.startsWith("//")
+      ? `/login?next=${encodeURIComponent(q)}`
+      : "/login";
+  return c.redirect(dest, 302);
+});
 
 // --- Protocol API ---
 
@@ -409,6 +687,117 @@ if (ENABLE_SIMULATOR) {
     return c.html(simulatorPage(s?.account ?? null));
   });
 
+  /**
+   * Same-origin fetch of a capability URL so the browser never hits a
+   * cross-origin NetworkError when the QR uses 127.0.0.1 vs LAN IP, etc.
+   */
+  app.post("/dev/simulator/fetch-request", async (c) => {
+    if (!rateLimit(`simf:${clientKey(c)}`, 40, 60_000)) {
+      return jsonError("rate_limited", "Too many requests", 429);
+    }
+    try {
+      const body = await c.req.json();
+      let urlStr = String(body.capabilityUrl || body.url || "").trim();
+      if (!urlStr) {
+        return jsonError("invalid_request", "capabilityUrl required", 400);
+      }
+      // Allow path-only pastes
+      if (urlStr.startsWith("/dash-auth/")) {
+        urlStr = absoluteUrl(urlStr);
+      }
+      let parsed: URL;
+      try {
+        parsed = new URL(urlStr);
+      } catch {
+        return jsonError("invalid_request", "Invalid capability URL", 400);
+      }
+      if (!parsed.pathname.includes("/dash-auth/v1/r/")) {
+        return jsonError(
+          "invalid_request",
+          "URL must be a SIWD capability path …/dash-auth/v1/r/…",
+          400,
+        );
+      }
+      // Prefer same-host public origin so cookies/binding stay consistent
+      const localPath = parsed.pathname + parsed.search;
+      const fetchUrl = absoluteUrl(localPath);
+      const r = await fetch(fetchUrl, {
+        headers: { Accept: "application/json" },
+      });
+      const text = await r.text();
+      let json: unknown;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        return jsonError(
+          "invalid_request",
+          `Upstream returned non-JSON (${r.status})`,
+          502,
+        );
+      }
+      if (!r.ok) {
+        return c.json(json, r.status as 400);
+      }
+      return c.json(json);
+    } catch (e) {
+      return jsonError(
+        "platform_unavailable",
+        e instanceof Error ? e.message : "fetch failed",
+        503,
+      );
+    }
+  });
+
+  app.post("/dev/simulator/discover", async (c) => {
+    if (!rateLimit(`simd:${clientKey(c)}`, 10, 60_000)) {
+      return jsonError("rate_limited", "Too many discovery attempts", 429);
+    }
+    try {
+      const body = await c.req.json();
+      const phrase = String(body.phrase || "");
+      const hintName = body.hintName ? String(body.hintName) : null;
+      const passphrase =
+        body.passphrase != null ? String(body.passphrase) : "";
+      if (!phrase.trim()) {
+        return jsonError("invalid_request", "phrase required", 400);
+      }
+      const { discoverSimulatorIdentities } = await import(
+        "./lib/simulator-discover.js"
+      );
+      const identities = await discoverSimulatorIdentities({
+        phrase,
+        hintName,
+        passphrase,
+      });
+      if (!identities.length) {
+        return jsonError(
+          "not_found",
+          "No Platform identities found for this phrase. Use a testnet phrase that already has an identity/username.",
+          404,
+        );
+      }
+      // Return material for in-browser session only (dev simulator).
+      return c.json({
+        network: "testnet",
+        identities: identities.map((i) => ({
+          identityId: i.identityId,
+          dpnsName: i.dpnsName,
+          keyId: i.keyId,
+          identityIndex: i.identityIndex,
+          privateKeyHex: i.privateKeyHex,
+          publicKeyHex: i.publicKeyHex,
+          usernames: i.usernames,
+        })),
+      });
+    } catch (e) {
+      return jsonError(
+        "platform_unavailable",
+        e instanceof Error ? e.message : "discover failed",
+        503,
+      );
+    }
+  });
+
   app.post("/dev/simulator/sign", async (c) => {
     if (!rateLimit(`sim:${clientKey(c)}`, 40, 60_000)) {
       return jsonError("rate_limited", "Too many requests", 429);
@@ -425,12 +814,35 @@ if (ENABLE_SIMULATOR) {
       expiresAt: string;
     };
     const identityId = String(body.identityId || "");
-    const signer = getSimulatorSigner(identityId);
-    if (!signer) {
-      return jsonError("invalid_request", "Unknown simulator identity", 400);
+    // Prefer custom testnet key material (phrase import); else fixture alice/bob.
+    let privateKey: Uint8Array | null = null;
+    let dpnsName = String(body.dpnsName || "");
+    let keyId = Number(body.keyId);
+    const customHex = String(body.privateKeyHex || "").replace(/^0x/, "");
+    if (/^[0-9a-fA-F]{64}$/.test(customHex)) {
+      const { hexToBytes } = await import("@siwd/protocol");
+      privateKey = hexToBytes(customHex);
+      if (!dpnsName) {
+        return jsonError(
+          "invalid_request",
+          "dpnsName required for custom key",
+          400,
+        );
+      }
+      if (!Number.isFinite(keyId)) keyId = 1;
+    } else {
+      const signer = getSimulatorSigner(identityId);
+      if (!signer) {
+        return jsonError(
+          "invalid_request",
+          "Unknown simulator identity — import a phrase or pick alice/bob",
+          400,
+        );
+      }
+      privateKey = signer.privateKey;
+      if (!dpnsName) dpnsName = signer.dpnsName;
+      if (!Number.isFinite(keyId) || keyId < 0) keyId = signer.keyId;
     }
-    const dpnsName = String(body.dpnsName || signer.dpnsName);
-    const keyId = Number(body.keyId || signer.keyId);
 
     const signature = signCanonicalBase64Url(
       {
@@ -446,7 +858,7 @@ if (ENABLE_SIMULATOR) {
         dpnsName,
         keyId,
       },
-      signer.privateKey,
+      privateKey,
     );
 
     const response = {
@@ -462,19 +874,40 @@ if (ENABLE_SIMULATOR) {
       signature,
     };
 
-    const respondUrl = absoluteUrl("/dash-auth/v1/respond");
-    const r = await fetch(respondUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-      body: JSON.stringify(response),
-    });
-    const respondBody = await r.json();
+    // Prefer loopback so server-side sign never depends on LAN routing of PUBLIC_ORIGIN.
+    const respondCandidates = [
+      `http://127.0.0.1:${PORT}/dash-auth/v1/respond`,
+      absoluteUrl("/dash-auth/v1/respond"),
+    ];
+    let respondBody: unknown = { error: { message: "respond failed" } };
+    let respondStatus = 502;
+    let lastErr = "";
+    for (const respondUrl of respondCandidates) {
+      try {
+        const r = await fetch(respondUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          body: JSON.stringify(response),
+        });
+        respondStatus = r.status;
+        respondBody = await r.json();
+        lastErr = "";
+        break;
+      } catch (e) {
+        lastErr = e instanceof Error ? e.message : String(e);
+      }
+    }
+    if (lastErr && respondStatus === 502) {
+      respondBody = {
+        error: { code: "respond_unreachable", message: lastErr },
+      };
+    }
     return c.json({
       signed: response,
-      respondStatus: r.status,
+      respondStatus,
       respondBody,
     });
   });
@@ -524,24 +957,9 @@ app.post("/dash-auth/v1/platform/discover", async (c) => {
     return jsonError("invalid_request", "publicKeyHashes 1..40 required", 400);
   }
   try {
-    const found: Array<{
-      publicKeyHash: string;
-      identityIds: string[];
-    }> = [];
-    const identitySet = new Set<string>();
-    for (const h of hashes) {
-      const ids = await identitiesByPublicKeyHash(h);
-      if (ids.length) {
-        found.push({ publicKeyHash: h, identityIds: ids });
-        ids.forEach((id) => identitySet.add(id));
-      }
-    }
-    const identities = [];
-    for (const id of identitySet) {
-      const summary = await fetchIdentitySummary(id);
-      if (summary) identities.push(summary);
-    }
-    return c.json({ network: "testnet", found, identities });
+    // One worker process for all hashes (byPublicKeyHash + summaries).
+    const result = await discoverByPublicKeyHashes(hashes);
+    return c.json({ network: "testnet", ...result });
   } catch (e) {
     return jsonError(
       "platform_unavailable",
@@ -581,5 +999,8 @@ app.get("/healthz", (c) =>
 console.log(`SIWD demo listening on http://${HOST}:${PORT}`);
 console.log(`PUBLIC_ORIGIN=${PUBLIC_ORIGIN}`);
 console.log(`Simulator: ${ENABLE_SIMULATOR ? "enabled" : "disabled"}`);
+console.log(
+  `Contact form: ${CONTACT_ENABLED ? "enabled (SIWD_CONTACT_TO set)" : "disabled"}`,
+);
 
 serve({ fetch: app.fetch, hostname: HOST, port: PORT });

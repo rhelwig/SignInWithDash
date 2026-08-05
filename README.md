@@ -71,7 +71,7 @@ simulator** (fixture keys; no live Platform yet):
 
 ```bash
 cd apps/demo-web && npm install && npm run dev
-# http://127.0.0.1:8787
+# http://127.0.0.1:8792
 ```
 
 See [docs/DEMO-SITE.md](docs/DEMO-SITE.md).
