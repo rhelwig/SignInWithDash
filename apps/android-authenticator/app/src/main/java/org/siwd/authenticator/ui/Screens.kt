@@ -144,7 +144,7 @@ fun HomeScreen(
             Text("Import testnet recovery phrase")
         }
         TextButton(onClick = onFixtures) {
-            Text("Dev fixtures (alice / bob)")
+            Text("Dev fixtures (alice / bob — local simulator only)")
         }
 
         // Known sites — open relying party in the device browser
@@ -255,8 +255,9 @@ fun ImportPhraseScreen(
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
         )
         Text(
-            "Discovery uses on-device testnet DAPI and public trusted quorum keys " +
-                "(quorums.testnet.networks.dash.org). No laptop proxy.",
+            "Discovery talks to Dash Platform testnet from this device (on-device DAPI + " +
+                "public trusted quorums). Private keys never leave the phone. " +
+                "Enter your DPNS name below if you have one — it helps when hash lookup is flaky.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
         )
@@ -422,12 +423,21 @@ fun SetupScreen(
                 }
             }
         }
-        Text("Dev fixtures (always available for local demo):")
+        Text(
+            "Dev fixtures (local hybrid/simulator sites only — not dashlogin public platform mode):",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+        )
         DevFixtures.all.forEach { id ->
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(12.dp)) {
                     Text(id.label, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
                     Text(id.fullDpnsName, fontFamily = FontFamily.Monospace)
+                    Text(
+                        "Synthetic keys — not live testnet identities",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                    )
                 }
             }
         }
@@ -480,7 +490,7 @@ private sealed class SignerChoice {
             when (this) {
                 is Imported ->
                     displayDashName(stored.fullDpnsNames.firstOrNull() ?: stored.identityId.take(10))
-                is Fixture -> fixture.label
+                is Fixture -> "${fixture.label} (local fixture only)"
             }
 }
 
@@ -502,12 +512,18 @@ fun ApproveScreen(
     var error by remember { mutableStateOf<String?>(null) }
     var request by remember { mutableStateOf<AuthRequest?>(null) }
 
+    val imported = remember { identityStore.list() }
     val choices =
-        remember {
-            identityStore.list().map { SignerChoice.Imported(it) } +
+        remember(imported) {
+            // Prefer real imported identities first so public platform demos don't default to alice/bob.
+            imported.map { SignerChoice.Imported(it) } +
                 DevFixtures.all.map { SignerChoice.Fixture(it) }
         }
-    var choice by remember { mutableStateOf(choices.first()) }
+    var choice by remember {
+        mutableStateOf(
+            choices.firstOrNull { it is SignerChoice.Imported } ?: choices.first(),
+        )
+    }
     var nameInput by remember { mutableStateOf(displayDashName(choice.defaultName)) }
     var expanded by remember { mutableStateOf(false) }
     var secondsLeft by remember { mutableIntStateOf(0) }
@@ -588,7 +604,20 @@ fun ApproveScreen(
                 result =
                     "Approved. Return to the browser — it should finish signing you in.\n$body"
             } catch (e: Exception) {
-                error = e.message ?: e.toString()
+                val raw = e.message ?: e.toString()
+                error =
+                    if (
+                        raw.contains("name_ineligible", ignoreCase = true) ||
+                            raw.contains("Name unresolved", ignoreCase = true) ||
+                            raw.contains("Name resolves to a different", ignoreCase = true)
+                    ) {
+                        raw +
+                            "\n\nPublic platform demos need a real testnet DPNS name " +
+                            "imported from your recovery phrase. alice/bob fixtures only " +
+                            "work against a local hybrid/simulator site."
+                    } else {
+                        raw
+                    }
             } finally {
                 busy = false
             }

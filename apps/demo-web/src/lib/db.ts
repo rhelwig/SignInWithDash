@@ -101,8 +101,10 @@ async function openSqlJs(path: string): Promise<DemoDb> {
   raw.run("PRAGMA foreign_keys = ON;");
 
   let dirty = false;
+  /** Nesting depth of explicit transactions. export() mid-transaction aborts it. */
+  let txDepth = 0;
   const persist = () => {
-    if (!dirty) return;
+    if (!dirty || txDepth > 0) return;
     const data = raw.export();
     writeFileSync(path, Buffer.from(data));
     dirty = false;
@@ -139,6 +141,8 @@ async function openSqlJs(path: string): Promise<DemoDb> {
         idRow?.[0]?.values?.[0]?.[0] != null
           ? Number(idRow[0].values[0][0])
           : 0;
+      // Never export while a transaction is open — sql.js export() ends the txn
+      // and subsequent SELECTs (e.g. finish → account by lastInsertRowid) miss rows.
       persist();
       return { changes, lastInsertRowid };
     },
@@ -159,9 +163,11 @@ async function openSqlJs(path: string): Promise<DemoDb> {
       <T>(fn: () => T) =>
       () => {
         raw.run("BEGIN");
+        txDepth += 1;
         try {
           const result = fn();
           raw.run("COMMIT");
+          txDepth -= 1;
           dirty = true;
           persist();
           return result;
@@ -171,6 +177,7 @@ async function openSqlJs(path: string): Promise<DemoDb> {
           } catch {
             /* ignore */
           }
+          txDepth = Math.max(0, txDepth - 1);
           throw e;
         }
       },
@@ -185,7 +192,12 @@ function normalizeParams(params: unknown[]): unknown[] {
   if (params.length === 1 && Array.isArray(params[0])) {
     return params[0] as unknown[];
   }
-  return params.map((p) => (p === undefined ? null : p));
+  return params.map((p) => {
+    if (p === undefined) return null;
+    // sql.js bind is happier with plain numbers than bigint
+    if (typeof p === "bigint") return Number(p);
+    return p;
+  });
 }
 
 function migrate(d: DemoDb) {

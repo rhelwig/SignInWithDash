@@ -20,6 +20,13 @@
         <!-- Cleartext only for loopback/LAN listed in network_security_config.xml.
              Public demo uses HTTPS (e.g. https://dashlogin.ronhelwig.com). -->
 
+        <!-- Native Platform/DAPI isolated so SDK SIGABRT cannot kill the UI process.
+             Still phone↔Platform only (no website proxy for discovery). -->
+        <service
+            android:name=".data.PlatformRemoteService"
+            android:exported="false"
+            android:process=":platform" />
+
         <!-- adb: am start -n org.siwd.authenticator.testnet.debug/.DebugSelfTestActivity -->
         <activity
             android:name=".DebugSelfTestActivity"

@@ -1,26 +1,35 @@
 package org.siwd.authenticator.data
 
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Bundle
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
+import android.os.RemoteException
 import android.util.Log
 import org.siwd.protocol.Bip39
-import org.siwd.protocol.IdentityDerivation
-import org.siwd.protocol.Network
-import org.siwd.protocol.SiwdSigner
-import org.siwd.protocol.bytesToHex
+import org.siwd.protocol.hexToBytes
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Discovers Platform identities from a mnemonic by deriving HIGH auth keys.
+ * Discovers Platform identities from a mnemonic (phone ↔ Platform only).
  *
- * ## Strategy (phone ↔ Platform only)
- * 1. Optional **DPNS name assist** — resolve name, fetch identity, match keys locally.
- * 2. **On-device DAPI** public-key-hash lookup via [OnDevicePlatform] (trusted quorum
- *    context from Dash’s public `quorums.testnet.networks.dash.org` service).
- *
- * There is **no website proxy**. Private keys never leave the device; only public
- * key hashes or a name leave for network lookup.
+ * Native dash-sdk work runs in [PlatformRemoteService] process `:platform` so a
+ * native SIGABRT cannot take down the UI process. There is **no website proxy**.
  */
-class PlatformDiscovery {
+class PlatformDiscovery(
+    private val appContext: Context,
+) {
     companion object {
         private const val TAG = "SiwdDiscovery"
+        private const val TIMEOUT_SEC = 120L
     }
 
     data class Discovered(
@@ -32,25 +41,12 @@ class PlatformDiscovery {
         val publicKey: ByteArray,
     )
 
-    private data class Cand(
-        val identityIndex: Int,
-        val keyId: Int,
-        val priv: ByteArray,
-        val pub: ByteArray,
-        val hash: ByteArray,
-    )
-
     fun discoverFromMnemonic(
         phrase: String,
         maxIdentityIndex: Int = 5,
-        network: Network = Network.TESTNET,
         hintName: String? = null,
-        /** Optional BIP-39 passphrase (sometimes called the 13th/25th word). Empty = none. */
         passphrase: String = "",
     ): List<Discovered> {
-        require(network == Network.TESTNET) {
-            "This authenticator build is testnet-only"
-        }
         val normalized =
             phrase
                 .trim()
@@ -59,197 +55,152 @@ class PlatformDiscovery {
         require(Bip39.validateMnemonic(normalized)) {
             "Invalid recovery phrase — enter BIP-39 words in order, separated by a single space"
         }
-        val seed = Bip39.mnemonicToSeed(normalized, passphrase)
 
-        val candidates = mutableListOf<Cand>()
-        for (idx in 0..maxIdentityIndex) {
-            for (keyId in 0..5) {
-                val priv = IdentityDerivation.derivePrivateKey(seed, network, idx, keyId)
-                val pub = SiwdSigner.publicKeyCompressed(priv)
-                val h = IdentityDerivation.publicKeyHash160(pub)
-                candidates.add(Cand(idx, keyId, priv, pub, h))
-            }
-        }
+        val resultBox = AtomicReference<List<Discovered>?>(null)
+        val errorBox = AtomicReference<String?>(null)
+        val latch = CountDownLatch(1)
 
-        val errors = mutableListOf<String>()
-        val hint = hintName?.trim()?.takeIf { it.isNotEmpty() }
+        val replyMessenger =
+            Messenger(
+                object : Handler(Looper.getMainLooper()) {
+                    override fun handleMessage(msg: Message) {
+                        when (msg.what) {
+                            PlatformRemoteService.MSG_RESULT -> {
+                                resultBox.set(unpack(msg.data))
+                                latch.countDown()
+                            }
+                            PlatformRemoteService.MSG_ERROR -> {
+                                errorBox.set(
+                                    msg.data.getString(PlatformRemoteService.KEY_ERROR)
+                                        ?: "Unknown platform error",
+                                )
+                                latch.countDown()
+                            }
+                            else -> super.handleMessage(msg)
+                        }
+                    }
+                },
+            )
 
-        // Prefetch trusted quorums early so proof verification can succeed.
-        try {
-            TrustedQuorumContext.ensureFresh()
-            Log.i(TAG, "Trusted quorums: ${TrustedQuorumContext.status()}")
-        } catch (e: Exception) {
-            Log.w(TAG, "Trusted quorum prefetch: ${e.message}")
-            errors.add("trusted-quorums: ${e.message}")
-        }
-
-        if (hint != null) {
-            try {
-                val byName = discoverByNameHint(hint, seed, network, maxIdentityIndex)
-                if (byName.isNotEmpty()) {
-                    Log.i(TAG, "Name-assisted discovery found ${byName.size}")
-                    return byName
+        val death =
+            object : IBinder.DeathRecipient {
+                override fun binderDied() {
+                    errorBox.compareAndSet(
+                        null,
+                        "Native Platform process crashed (dash-sdk). " +
+                            "This is a known SDK issue on some devices — " +
+                            "try again, or use a different device until the SDK is fixed.",
+                    )
+                    latch.countDown()
                 }
-                errors.add("name-assist: no key match for \"$hint\"")
-            } catch (e: Exception) {
-                Log.w(TAG, "Name-assisted discovery failed: ${e.message}", e)
-                errors.add("name-assist: ${e.javaClass.simpleName}: ${e.message}")
             }
+
+        var binder: IBinder? = null
+        val conn =
+            object : ServiceConnection {
+                override fun onServiceConnected(
+                    name: ComponentName?,
+                    service: IBinder?,
+                ) {
+                    binder = service
+                    try {
+                        service?.linkToDeath(death, 0)
+                    } catch (_: RemoteException) {
+                        errorBox.set("Failed to link platform process")
+                        latch.countDown()
+                        return
+                    }
+                    val msg = Message.obtain(null, PlatformRemoteService.MSG_DISCOVER)
+                    msg.replyTo = replyMessenger
+                    msg.data =
+                        Bundle().apply {
+                            putString(PlatformRemoteService.KEY_PHRASE, normalized)
+                            putString(PlatformRemoteService.KEY_PASSPHRASE, passphrase)
+                            putString(PlatformRemoteService.KEY_HINT, hintName)
+                            putInt(PlatformRemoteService.KEY_MAX_IDX, maxIdentityIndex)
+                        }
+                    try {
+                        Messenger(service).send(msg)
+                    } catch (e: RemoteException) {
+                        errorBox.set("Platform service send failed: ${e.message}")
+                        latch.countDown()
+                    }
+                }
+
+                override fun onServiceDisconnected(name: ComponentName?) {
+                    errorBox.compareAndSet(
+                        null,
+                        "Platform process disconnected unexpectedly",
+                    )
+                    latch.countDown()
+                }
+            }
+
+        val intent = Intent(appContext, PlatformRemoteService::class.java)
+        val bound =
+            appContext.bindService(
+                intent,
+                conn,
+                Context.BIND_AUTO_CREATE,
+            )
+        if (!bound) {
+            error("Could not start on-device Platform discovery service")
         }
 
         try {
-            val found = discoverOnDevice(candidates, seed, network, maxIdentityIndex)
-            if (found.isNotEmpty()) {
-                Log.i(TAG, "On-device discovery found ${found.size}")
-                return found
+            if (!latch.await(TIMEOUT_SEC, TimeUnit.SECONDS)) {
+                error(
+                    "On-device Platform discovery timed out after ${TIMEOUT_SEC}s. " +
+                        "Check network access to testnet DAPI / quorums.testnet.networks.dash.org",
+                )
             }
-            errors.add("on-device: no matching identity for derived keys")
-        } catch (e: Throwable) {
-            Log.w(TAG, "On-device discovery failed: ${e.message}", e)
-            errors.add("on-device: ${e.javaClass.simpleName}: ${e.message}")
+            errorBox.get()?.let { error(it) }
+            val found = resultBox.get().orEmpty()
+            if (found.isEmpty()) {
+                error(
+                    "No Platform identities found for this phrase.\n\n" +
+                        "Checked identity indexes 0–$maxIdentityIndex and key ids 0–5 " +
+                        "via on-device testnet DAPI (no website).\n" +
+                        "• Use the recovery phrase that created the testnet identity.\n" +
+                        "• Enter your DPNS name to assist discovery.\n" +
+                        "• Device needs network access to testnet Platform.",
+                )
+            }
+            return found
+        } finally {
+            try {
+                binder?.unlinkToDeath(death, 0)
+            } catch (_: Exception) {
+            }
+            try {
+                appContext.unbindService(conn)
+            } catch (_: Exception) {
+            }
         }
-
-        error(
-            "No Platform identities found for this phrase.\n\n" +
-                "Checked identity indexes 0–$maxIdentityIndex and key ids 0–5 " +
-                "(path m/9'/1'/5'/0'/0'/i'/k') via on-device testnet DAPI.\n" +
-                "• Use the recovery phrase that created the testnet identity in DashPay.\n" +
-                "• Create/finish identity + username on testnet first if needed.\n" +
-                "• Optional: enter your DPNS name to assist discovery.\n" +
-                "• Device needs network access to testnet Platform and " +
-                "quorums.testnet.networks.dash.org\n\n" +
-                "Details:\n" + errors.joinToString("\n"),
-        )
     }
 
-    private fun discoverByNameHint(
-        hintName: String,
-        seed: ByteArray,
-        network: Network,
-        maxIdentityIndex: Int,
-    ): List<Discovered> {
-        val label = hintName.replace(Regex("\\.dash$", RegexOption.IGNORE_CASE), "")
-        val identityId = OnDevicePlatform.resolveName(label) ?: return emptyList()
-        val identity = OnDevicePlatform.getIdentity(identityId) ?: return emptyList()
-        val match = matchIdentityKeys(identity, seed, network, maxIdentityIndex) ?: return emptyList()
-        val names =
-            OnDevicePlatform.usernamesForIdentity(identityId).ifEmpty {
-                listOf(if (label.endsWith(".dash")) label else "$label.dash")
-            }
-        return listOf(
-            Discovered(
-                identityIndex = match.identityIndex,
-                keyId = match.keyId,
-                identityId = identityId,
-                fullDpnsNames = names,
-                privateKey = match.priv,
-                publicKey = match.pub,
-            ),
-        )
-    }
-
-    private fun discoverOnDevice(
-        candidates: List<Cand>,
-        seed: ByteArray,
-        network: Network,
-        maxIdentityIndex: Int,
-    ): List<Discovered> {
+    private fun unpack(data: Bundle): List<Discovered> {
+        val n = data.getInt(PlatformRemoteService.KEY_COUNT, 0)
         val out = mutableListOf<Discovered>()
-        val seenIds = mutableSetOf<String>()
-        var lastError: Exception? = null
-        var lookups = 0
-        var hits = 0
-
-        val uniqueByHash = linkedMapOf<String, Cand>()
-        for (c in candidates) {
-            uniqueByHash.putIfAbsent(bytesToHex(c.hash), c)
-        }
-
-        for ((_, c) in uniqueByHash) {
-            lookups++
-            val identity =
-                try {
-                    OnDevicePlatform.getIdentityByPublicKeyHash(c.hash)
-                } catch (e: Exception) {
-                    lastError = e
-                    null
-                } ?: continue
-            hits++
-            val identityId = identity.id.toString()
-            if (!seenIds.add(identityId)) continue
-
-            val match = matchIdentityKeys(identity, seed, network, maxIdentityIndex) ?: continue
-            val names = OnDevicePlatform.usernamesForIdentity(identityId)
+        for (i in 0 until n) {
+            val p = "${PlatformRemoteService.KEY_PREFIX}$i"
+            val privHex = data.getString("${p}_priv") ?: continue
+            val pubHex = data.getString("${p}_pub") ?: continue
+            val names =
+                data.getStringArrayList("${p}_names")?.toList()
+                    ?: listOf("unnamed.dash")
             out.add(
                 Discovered(
-                    identityIndex = match.identityIndex,
-                    keyId = match.keyId,
-                    identityId = identityId,
-                    fullDpnsNames = names.ifEmpty { listOf("unnamed.dash") },
-                    privateKey = match.priv,
-                    publicKey = match.pub,
+                    identityIndex = data.getInt("${p}_idx"),
+                    keyId = data.getInt("${p}_keyId"),
+                    identityId = data.getString("${p}_id") ?: continue,
+                    fullDpnsNames = names,
+                    privateKey = hexToBytes(privHex),
+                    publicKey = hexToBytes(pubHex),
                 ),
             )
         }
-        if (out.isEmpty() && lastError != null && hits == 0) {
-            throw lastError
-        }
-        Log.i(
-            TAG,
-            "On-device discovery: lookups=$lookups hits=$hits identities=${out.size}",
-        )
+        Log.i(TAG, "Unpacked ${out.size} identities from platform process")
         return out
     }
-
-    private data class MatchedKey(
-        val identityIndex: Int,
-        val keyId: Int,
-        val priv: ByteArray,
-        val pub: ByteArray,
-    )
-
-    private fun matchIdentityKeys(
-        identity: org.dashj.platform.dpp.identity.Identity,
-        seed: ByteArray,
-        network: Network,
-        maxIdentityIndex: Int,
-    ): MatchedKey? {
-        val ordered =
-            identity.publicKeys.sortedBy { key ->
-                when {
-                    OnDevicePlatform.isEligibleSiwdKey(key) -> 0
-                    key.securityLevel.name.contains("HIGH", ignoreCase = true) -> 1
-                    key.securityLevel.name.contains("CRITICAL", ignoreCase = true) -> 2
-                    else -> 3
-                }
-            }
-        for (key in ordered) {
-            if (key.disabledAt != null) continue
-            val purposeOk =
-                key.purpose.name.contains("AUTH", ignoreCase = true) ||
-                    key.purpose == org.dashj.platform.sdk.Purpose.AUTHENTICATION
-            if (!purposeOk) continue
-            if (key.securityLevel.name.contains("MASTER", ignoreCase = true)) continue
-            for (idx in 0..maxIdentityIndex) {
-                val priv = IdentityDerivation.derivePrivateKey(seed, network, idx, key.id)
-                val pub = SiwdSigner.publicKeyCompressed(priv)
-                if (pub.contentEquals(key.data)) {
-                    return MatchedKey(idx, key.id, priv, pub)
-                }
-                val h = IdentityDerivation.publicKeyHash160(pub)
-                if (IdentityDerivation.publicKeyHash160(key.data).contentEquals(h)) {
-                    return MatchedKey(idx, key.id, priv, pub)
-                }
-            }
-        }
-        return null
-    }
-
-    /** Resolve DPNS name via on-device DAPI only. */
-    fun resolveName(name: String): String? =
-        try {
-            OnDevicePlatform.resolveName(name)
-        } catch (_: Exception) {
-            null
-        }
 }

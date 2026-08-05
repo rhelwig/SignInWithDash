@@ -2,6 +2,8 @@ package org.siwd.authenticator.data
 
 import android.util.Log
 import org.bitcoinj.params.TestNet3Params
+import org.dashj.platform.dapiclient.provider.DAPIAddress
+import org.dashj.platform.dapiclient.provider.ListDAPIAddressProvider
 import org.dashj.platform.dpp.identity.Identity
 import org.dashj.platform.dpp.identity.IdentityPublicKey
 import org.dashj.platform.sdk.Purpose
@@ -9,65 +11,50 @@ import org.dashj.platform.sdk.SecurityLevel
 import org.dashj.platform.sdk.callbacks.ContextProvider
 import org.dashj.platform.sdk.platform.Platform
 import org.siwd.protocol.bytesToHex
+import java.lang.reflect.Field
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * On-device Dash Platform access for SIWD (testnet first).
+ * On-device Dash Platform access for SIWD (testnet).
  *
- * Talks to Platform DAPI from this app — **no** demo-web proxy and **no**
- * DashPay package integration.
+ * Phone ↔ Platform DAPI only — **no** website proxy.
  *
- * ## Quorum / proof verification
- * Platform responses are proof-backed. DashPay supplies quorum keys from a
- * full [org.bitcoinj.evolution.SimplifiedMasternodeListManager] after Core
- * sync. SIWD instead loads **public trusted quorum context** from
- * `https://quorums.testnet.networks.dash.org/` (same source as Evo
- * WasmTrustedContext.prefetchTestnet) via [TrustedQuorumContext], and
- * implements [ContextProvider.getQuorumPublicKey] from that cache.
- *
- * Mainnet is intentionally not enabled until SIWD's mainnet gate is met.
+ * Quorum keys come from Dash’s public trusted-context service via
+ * [TrustedQuorumContext]. The native rust SDK binds a [ContextProvider] at
+ * **create** time. A second `create_dash_sdk_with_context` panics on Android
+ * (`setup_logs` uses tracing `.init()` which aborts if already set). So we
+ * never recreate the SDK — we rebind the existing native `JavaContextProvider`
+ * GlobalRef to our trusted provider (virtual dispatch then hits our
+ * `getQuorumPublicKey`).
  */
 object OnDevicePlatform {
     private const val TAG = "SiwdPlatform"
 
+    /**
+     * Layout of dash-sdk-java `struct JavaContextProvider` on 64-bit:
+     *   jclass contextProviderClass;      // +0
+     *   jmethodID getQuorumPublicKeyMethod; // +8
+     *   jobject contextProviderObject;    // +16  (JNI GlobalRef)
+     */
+    private const val NATIVE_CTX_OBJECT_OFFSET = 16L
+
     private val platformRef = AtomicReference<Platform?>(null)
     private val initError = AtomicReference<String?>(null)
 
-    /** Lazy Platform singleton for testnet. */
     fun testnet(): Platform {
         platformRef.get()?.let { return it }
         synchronized(this) {
             platformRef.get()?.let { return it }
             try {
                 Log.i(TAG, "Initializing on-device Platform (testnet DAPI + trusted quorums)")
-                // Prefetch quorums before first DAPI call.
-                try {
-                    TrustedQuorumContext.ensureFresh()
-                } catch (e: Exception) {
-                    Log.w(TAG, "Trusted quorum prefetch failed (will retry on lookup): ${e.message}")
-                }
+                TrustedQuorumContext.ensureFresh()
 
                 val params = TestNet3Params.get()
-                // Platform() loads libsdklib and creates one DapiClient.
-                // Do NOT construct a second DapiClient — native create_dash_sdk aborts.
                 Log.i(TAG, "Constructing Platform (native dash-sdk)…")
                 val p = Platform(params)
-                Log.i(TAG, "Platform constructed; installing trusted ContextProvider")
-                installTrustedContextProvider(p)
-                try {
-                    p.useValidNodes()
-                } catch (e: Exception) {
-                    Log.w(TAG, "useValidNodes: ${e.message}")
-                }
-                try {
-                    val hosts = TrustedQuorumContext.dapiHosts()
-                    if (hosts.isNotEmpty()) {
-                        // Host-only whitelist (no ports) for DAPI address list
-                        p.appendWhiteList(hosts.take(20))
-                    }
-                } catch (e: Exception) {
-                    Log.w(TAG, "appendWhiteList: ${e.message}")
-                }
+                Log.i(TAG, "Platform constructed; installing trusted ContextProvider (rebind, no recreate)")
+                applyTrustedDapiHosts(p)
+                bindTrustedContextProvider(p)
                 Log.i(TAG, "Platform ready; ${TrustedQuorumContext.status()}")
                 platformRef.set(p)
                 initError.set(null)
@@ -83,10 +70,36 @@ object OnDevicePlatform {
     fun lastInitError(): String? = initError.get()
 
     /**
-     * ContextProvider backed by [TrustedQuorumContext] public HTTPS cache.
+     * Prefer live testnet DAPI hosts from the trusted-context service over the
+     * baked-in HP seed list (which can be stale or all banned after quorum misses).
      */
-    private fun installTrustedContextProvider(platform: Platform) {
-        platform.client.contextProvider =
+    private fun applyTrustedDapiHosts(platform: Platform) {
+        val hosts = TrustedQuorumContext.dapiHosts()
+        if (hosts.isEmpty()) {
+            Log.w(TAG, "No trusted DAPI hosts; keeping Platform default seed list")
+            return
+        }
+        // Cap list size — ListDAPIAddressProvider walks the whole set on ban/retry.
+        val limited = hosts.take(40)
+        val addresses = limited.map { DAPIAddress(it) }
+        val provider =
+            ListDAPIAddressProvider(
+                addresses,
+                org.dashj.platform.dapiclient.DapiClient.DEFAULT_BASE_BAN_TIME,
+            )
+        platform.client.dapiAddressListProvider = provider
+        Log.i(TAG, "Installed ${limited.size} trusted DAPI hosts (of ${hosts.size})")
+    }
+
+    /**
+     * Install trusted ContextProvider into the **already-created** native SDK.
+     *
+     * Do **not** call create_dash_sdk again — Android panics on second init
+     * (tracing subscriber). Instead rebind the GlobalRef inside the existing
+     * native context struct so proof callbacks hit [TrustedQuorumContext].
+     */
+    private fun bindTrustedContextProvider(platform: Platform) {
+        val trusted =
             object : ContextProvider() {
                 override fun getQuorumPublicKey(
                     quorumType: Int,
@@ -97,14 +110,15 @@ object OnDevicePlatform {
                     if (key == null) {
                         Log.w(
                             TAG,
-                            "quorum key miss type=$quorumType height=$coreChainLockedHeight " +
+                            "quorum key MISS type=$quorumType height=$coreChainLockedHeight " +
                                 "hash=${quorumHashBytes?.let { bytesToHex(it) }} " +
                                 "(${TrustedQuorumContext.status()})",
                         )
                     } else {
-                        Log.d(
+                        Log.i(
                             TAG,
-                            "quorum key hit type=$quorumType len=${key.size}",
+                            "quorum key HIT type=$quorumType len=${key.size} " +
+                                "hash=${quorumHashBytes?.let { bytesToHex(it) }}",
                         )
                     }
                     return key
@@ -114,12 +128,60 @@ object OnDevicePlatform {
                     identifier: org.dashj.platform.sdk.Identifier?,
                 ): ByteArray = byteArrayOf(0)
             }
+
+        val client = platform.client
+        // Capture the default provider *before* swapping the Kotlin field.
+        // Its nativeContext pointer is what libsdklib holds for callbacks.
+        val boundProvider = client.contextProvider
+        val boundNativeCtx = boundProvider.nativeContext
+        require(boundNativeCtx != 0L) { "bound ContextProvider has no nativeContext" }
+
+        // Create a native JavaContextProvider for the trusted instance so we
+        // have a valid JNI GlobalRef to its jobject.
+        val trustedNativeCtx = trusted.nativeContext
+        require(trustedNativeCtx != 0L) { "trusted ContextProvider failed to allocate nativeContext" }
+
+        Log.i(
+            TAG,
+            "Rebinding native ContextProvider GlobalRef " +
+                "(boundCtx=$boundNativeCtx trustedCtx=$trustedNativeCtx)",
+        )
+        rebindNativeContextObject(boundNativeCtx, trustedNativeCtx)
+
+        client.contextProvider = trusted
+        Log.i(TAG, "Trusted ContextProvider rebound into existing rustSdk")
     }
 
     /**
-     * Connectivity probe. Prefers trusted-quorum fetch (always safe).
-     * Platform construction can abort natively on some devices — call carefully.
+     * Copy the `jobject contextProviderObject` GlobalRef from [fromNativeCtx]
+     * into [intoNativeCtx] (the struct the rust SDK already holds).
+     *
+     * Both pointers are `JavaContextProvider*` from dash-sdk-java. We only
+     * replace the object slot; class + methodID stay as the base
+     * ContextProvider virtual method (JNI still virtual-dispatches).
+     *
+     * Uses `sun.misc.Unsafe` via reflection (not on the Android compile
+     * classpath as a typed import, but present at runtime on ART).
      */
+    private fun rebindNativeContextObject(intoNativeCtx: Long, fromNativeCtx: Long) {
+        val unsafeClass = Class.forName("sun.misc.Unsafe")
+        val theUnsafeField: Field = unsafeClass.getDeclaredField("theUnsafe")
+        theUnsafeField.isAccessible = true
+        val unsafe = theUnsafeField.get(null)
+        val getLong =
+            unsafeClass.getMethod("getLong", Long::class.javaPrimitiveType)
+        val putLong =
+            unsafeClass.getMethod(
+                "putLong",
+                Long::class.javaPrimitiveType,
+                Long::class.javaPrimitiveType,
+            )
+        val globalRef =
+            getLong.invoke(unsafe, fromNativeCtx + NATIVE_CTX_OBJECT_OFFSET) as Long
+        require(globalRef != 0L) { "trusted nativeContext has null GlobalRef" }
+        putLong.invoke(unsafe, intoNativeCtx + NATIVE_CTX_OBJECT_OFFSET, globalRef)
+    }
+
     fun probeConnectivity(includePlatform: Boolean = false): String {
         return try {
             TrustedQuorumContext.ensureFresh()
@@ -138,14 +200,20 @@ object OnDevicePlatform {
     fun getIdentityByPublicKeyHash(pubKeyHash: ByteArray): Identity? {
         val p = testnet()
         return try {
+            // prefer non-proof path when available, then fall back
             p.client.getIdentityByFirstPublicKey(pubKeyHash, false)
         } catch (e: Exception) {
-            Log.w(TAG, "getIdentityByFirstPublicKey failed: ${e.message}", e)
+            Log.w(TAG, "getIdentityByFirstPublicKey(false) failed: ${e.message}", e)
             try {
-                p.identities.getByPublicKeyHash(pubKeyHash)
+                p.client.getIdentityByFirstPublicKey(pubKeyHash, true)
             } catch (e2: Exception) {
-                Log.w(TAG, "getByPublicKeyHash failed: ${e2.message}", e2)
-                throw e2
+                Log.w(TAG, "getIdentityByFirstPublicKey(true) failed: ${e2.message}", e2)
+                try {
+                    p.identities.getByPublicKeyHash(pubKeyHash)
+                } catch (e3: Exception) {
+                    Log.w(TAG, "getByPublicKeyHash failed: ${e3.message}", e3)
+                    throw e3
+                }
             }
         }
     }

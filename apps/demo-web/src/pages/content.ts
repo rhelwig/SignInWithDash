@@ -119,7 +119,7 @@ export async function homePage(account: AccountRow | null) {
           VERIFY_MODE === "hybrid"
             ? " — live Platform for real identities; alice/bob fixtures still work offline"
             : VERIFY_MODE === "platform"
-              ? " — live Platform only (no fixture fallback)"
+              ? " — live Platform only: real testnet DPNS name required (alice/bob app fixtures will not work here)"
               : " — fixture keys only (no live Platform)"
         }</li>
       <li>Public origin: <span class="mono">${esc(PUBLIC_ORIGIN)}</span></li>
@@ -190,8 +190,16 @@ export function getStartedPage(account: AccountRow | null) {
   }
 
   <div class="panel">
-    <h2>Option A — Localhost with dev simulator (ready now)</h2>
-    <ol>
+    <h2>Option A — Localhost with dev simulator</h2>
+    ${
+      VERIFY_MODE === "platform" && !ENABLE_SIMULATOR
+        ? `<div class="warn-box"><strong>Not available on this public host.</strong>
+        This site runs in <span class="mono">platform</span> verify mode with the simulator off.
+        Fixture identities (alice/bob) and the <span class="mono">/dev/simulator</span> UI are for
+        local development only (<span class="mono">SIWD_VERIFY_MODE=hybrid</span> or
+        <span class="mono">simulator</span>, <span class="mono">SIWD_ENABLE_SIMULATOR=true</span>).
+        Use Option B with a real testnet DPNS name instead.</div>`
+        : `<ol>
       <li>Open <a href="/login">Sign in with Dash</a> in one browser tab.</li>
       <li>Open <a href="/dev/simulator">Dev simulator</a> in another tab (or on a second device on the same host).</li>
       <li>Paste the capability URL from the QR (or open the QR link and copy it into the simulator).</li>
@@ -210,7 +218,8 @@ export function getStartedPage(account: AccountRow | null) {
           )
           .join("")}
       </tbody>
-    </table>
+    </table>`
+    }
   </div>
 
   <div class="panel">
@@ -227,10 +236,14 @@ export function getStartedPage(account: AccountRow | null) {
       <li>A prebuilt <strong>debug APK</strong> is published for convenience while iterating:
         <a href="/downloads/siwd-authenticator-testnet-debug.apk">Download SIWD Android authenticator (testnet debug APK)</a>.
         Treat it as a developer sample — verify the build from source for any serious use.</li>
-      <li>Requires a <strong>testnet</strong> Dash Platform identity + DPNS name (e.g. from
-        testnet DashPay). Never enter a mainnet recovery phrase.</li>
+      <li><strong>Real testnet DPNS required on this public site.</strong> You need a Dash Platform
+        <em>testnet</em> identity whose finalized DPNS name you control (e.g. from testnet DashPay),
+        plus the recovery phrase for those keys. The app’s alice/bob entries are
+        <strong>local fixtures only</strong> — they do not log into
+        <span class="mono">platform</span>-mode hosts like this one.
+        Never enter a mainnet recovery phrase.</li>
       <li>Flow: open <a href="/login">Sign in with Dash</a> here → scan the QR (or paste the
-        capability URL into the app) → approve on the phone → browser finishes.</li>
+        capability URL into the app) → approve with an <strong>imported</strong> identity → browser finishes.</li>
     </ul>
     <p class="muted">Wallet integration is not required to use SIWD. A separate authenticator
     keeps site-login signing apart from a full payment wallet; wallets may still choose to
@@ -279,27 +292,31 @@ export function howToTestPage(account: AccountRow | null) {
   <div class="panel">
     <h2>What you need</h2>
     <ol>
-      <li>A <strong>Dash Platform testnet</strong> identity with a DPNS name
-        (for example created in <strong>DashPay testnet</strong> / related testnet tooling).</li>
-      <li>Either:
-        <ul>
-          <li>the <a href="/get-started">Android authenticator (testnet APK or build from source)</a>, or</li>
-          <li>on a private/local deployment with the simulator enabled, the
-            <a href="/dev/simulator">dev simulator</a> (fixtures or imported testnet phrase).</li>
-        </ul>
-      </li>
+      <li>A <strong>Dash Platform testnet</strong> identity with a <strong>finalized DPNS name</strong>
+        you control (for example created in <strong>DashPay testnet</strong> / related testnet tooling).
+        SIWD proofs are name + key + identity: without a resolvable name, this public demo rejects the login
+        (<span class="mono">name_ineligible</span>).</li>
+      <li>The <a href="/get-started">Android authenticator</a> (testnet APK or build from source), with that
+        identity <strong>imported from the recovery phrase</strong> — not the app’s alice/bob fixtures.
+        Fixtures only work against a local site in hybrid/simulator mode.</li>
+      <li>Optional for self-hosters: a private/local deployment with
+        <span class="mono">SIWD_ENABLE_SIMULATOR=true</span> and hybrid/simulator verify mode, plus the
+        <a href="/dev/simulator">dev simulator</a>.</li>
       <li>Optional: testnet dash for identity registration (via a public testnet faucet if required by your wallet flow).</li>
     </ol>
+    <p class="muted"><strong>Why alice/bob fail here:</strong> they are synthetic local keys. On live testnet,
+    <span class="mono">bob.dash</span> does not resolve; <span class="mono">alice.dash</span> is a different
+    real identity than the fixture. This host uses <span class="mono">verifyMode=platform</span>.</p>
   </div>
 
   <div class="panel">
     <h2>Suggested path</h2>
     <ol>
       <li>Install the authenticator (prefer build from source; debug APK is for convenience only).</li>
-      <li>Import your <strong>testnet</strong> recovery phrase (and optional BIP-39 passphrase if you set one when creating the wallet).</li>
+      <li>Import your <strong>testnet</strong> recovery phrase (and optional BIP-39 passphrase if you set one when creating the wallet). Confirm the DPNS name appears under Identities.</li>
       <li>On this site, open <a href="/login">Sign in with Dash</a>.</li>
       <li>Scan the QR with the authenticator (or paste the capability URL).</li>
-      <li>Approve only if <strong>you</strong> started this login for this exact domain moments ago.</li>
+      <li>Choose the <strong>imported</strong> identity (not alice/bob), then approve only if <strong>you</strong> started this login for this exact domain moments ago.</li>
       <li>The browser finishes and creates/opens your site account (identity-bound).</li>
     </ol>
   </div>

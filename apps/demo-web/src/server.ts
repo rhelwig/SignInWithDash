@@ -991,6 +991,9 @@ app.get("/healthz", (c) =>
     origin: PUBLIC_ORIGIN,
     verifyMode: VERIFY_MODE,
     accounts: listPublicAccounts().length,
+    platformBridge: Boolean(
+      (process.env.SIWD_PLATFORM_BRIDGE || "").trim(),
+    ),
   }),
 );
 

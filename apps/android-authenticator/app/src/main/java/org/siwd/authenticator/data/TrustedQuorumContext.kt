@@ -66,14 +66,21 @@ object TrustedQuorumContext {
 
     fun getQuorumPublicKey(quorumHashBytes: ByteArray?): ByteArray? {
         if (quorumHashBytes == null || quorumHashBytes.isEmpty()) return null
-        val hex = quorumHashBytes.joinToString("") { b -> "%02x".format(b) }
         try {
             ensureFresh()
         } catch (e: Exception) {
             Log.w(TAG, "ensureFresh failed: ${e.message}")
         }
         val c = cache.get() ?: return null
-        return c.byHash[hex.lowercase()] ?: c.byHash[hex]
+        val hex = quorumHashBytes.joinToString("") { b -> "%02x".format(b) }.lowercase()
+        val rev =
+            quorumHashBytes
+                .reversedArray()
+                .joinToString("") { b -> "%02x".format(b) }
+                .lowercase()
+        return c.byHash[hex]
+            ?: c.byHash[rev]
+            ?: c.byHash[hex.removePrefix("0x")]
     }
 
     fun dapiHosts(): List<String> {

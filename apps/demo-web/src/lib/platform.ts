@@ -1,6 +1,10 @@
 /**
  * Dash Platform testnet access via an isolated Evo SDK worker process.
  * Keeps WASM network I/O out of the HTTP server process (more reliable).
+ *
+ * On shared hosts that cannot reach DAPI seeds, set SIWD_PLATFORM_BRIDGE to a
+ * small HTTP bridge (scripts/platform-bridge.mjs) reverse-tunneled from a
+ * machine that can (see docs/DEPLOY-DASHLOGIN.md).
  */
 import { spawn } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -14,7 +18,65 @@ const workerPath = join(
   "platform-worker.mjs",
 );
 
+const PLATFORM_BRIDGE = (process.env.SIWD_PLATFORM_BRIDGE || "")
+  .trim()
+  .replace(/\/$/, "");
+
+async function runViaBridge(
+  pathAndQuery: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  const url = `${PLATFORM_BRIDGE}${pathAndQuery}`;
+  const resp = await fetch(url, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.headers || {}),
+    },
+    signal: AbortSignal.timeout(90_000),
+  });
+  const text = await resp.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error(`Platform bridge bad JSON (${resp.status}): ${text.slice(0, 200)}`);
+  }
+  if (!resp.ok) {
+    const err =
+      parsed &&
+      typeof parsed === "object" &&
+      "error" in parsed &&
+      (parsed as { error: unknown }).error;
+    throw new Error(
+      typeof err === "string"
+        ? err
+        : `Platform bridge HTTP ${resp.status}: ${text.slice(0, 200)}`,
+    );
+  }
+  return parsed;
+}
+
 function runWorker(args: string[], timeoutMs = 90_000): Promise<unknown> {
+  // Prefer remote bridge when configured (shared hosting).
+  if (PLATFORM_BRIDGE) {
+    const [cmd, arg] = args;
+    if (cmd === "resolve") {
+      return runViaBridge(`/resolve?name=${encodeURIComponent(arg || "")}`);
+    }
+    if (cmd === "identity") {
+      return runViaBridge(`/identity/${encodeURIComponent(arg || "")}`);
+    }
+    if (cmd === "discover") {
+      const hashes = (arg || "").split(",").filter(Boolean);
+      return runViaBridge("/discover", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicKeyHashes: hashes }),
+      });
+    }
+  }
+
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [workerPath, ...args], {
       cwd: join(dirname(workerPath), ".."),

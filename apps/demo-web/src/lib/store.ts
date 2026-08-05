@@ -349,11 +349,17 @@ export async function respondToRequest(body: {
           publicKey = plat.publicKey;
           usedPlatform = true;
         } else if (VERIFY_MODE === "platform") {
+          // alice/bob in the authenticator are synthetic fixtures — not live testnet
+          // identities. bob.dash is unresolved; alice.dash exists on testnet but under a
+          // different identity id than the fixture. Tell testers clearly.
+          const fixtureHint = isFixture
+            ? " Dev fixtures (alice/bob) only work with a local hybrid/simulator site, not this public Platform-only demo. Import a real testnet recovery phrase with a finalized DPNS name."
+            : " This site requires a real testnet identity with a finalized DPNS name owned by the signing keys.";
           return {
             ok: false,
             code: plat.code,
             http: plat.code === "platform_unavailable" ? 503 : 401,
-            message: plat.message,
+            message: `${plat.message}.${fixtureHint}`,
           };
         }
       } catch (e) {
@@ -607,15 +613,14 @@ export function finishRequest(
           http: 403,
         });
       }
-      const info = d
-        .prepare(
-          `INSERT INTO accounts (identity_id, dpns_name, binding_policy, status, created_at, last_login_at)
-           VALUES (?, ?, ?, 'active', ?, ?)`,
-        )
-        .run(row.identity_id, row.dpns_name, row.binding_policy, ts, ts);
+      d.prepare(
+        `INSERT INTO accounts (identity_id, dpns_name, binding_policy, status, created_at, last_login_at)
+         VALUES (?, ?, ?, 'active', ?, ?)`,
+      ).run(row.identity_id, row.dpns_name, row.binding_policy, ts, ts);
+      // Prefer identity_id lookup over lastInsertRowid (more robust across backends).
       account = d
-        .prepare(`SELECT * FROM accounts WHERE id = ?`)
-        .get(info.lastInsertRowid) as AccountRow;
+        .prepare(`SELECT * FROM accounts WHERE identity_id = ?`)
+        .get(row.identity_id) as AccountRow;
       isNew = true;
     } else {
       // Re-check ban list (name/identity may have been banned after account creation)
@@ -647,8 +652,15 @@ export function finishRequest(
         ).run(row.dpns_name, ts, existing.id);
       }
       account = d
-        .prepare(`SELECT * FROM accounts WHERE id = ?`)
-        .get(existing.id) as AccountRow;
+        .prepare(`SELECT * FROM accounts WHERE identity_id = ?`)
+        .get(row.identity_id) as AccountRow;
+    }
+
+    if (!account || account.id == null) {
+      throw Object.assign(new Error("Account row missing after finish upsert"), {
+        code: "internal_error",
+        http: 500,
+      });
     }
 
     const consumed = d

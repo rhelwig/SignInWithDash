@@ -26,7 +26,7 @@ fun SiwdNav(initialCapabilityUrl: String?) {
     val knownSites = remember { KnownSitesStore(appCtx) }
     val identityStore = remember { SecureIdentityStore(appCtx) }
     val client = remember { RequestClient() }
-    val discovery = remember { PlatformDiscovery() }
+    val discovery = remember { PlatformDiscovery(appCtx) }
 
     val start =
         if (!initialCapabilityUrl.isNullOrBlank()) {
