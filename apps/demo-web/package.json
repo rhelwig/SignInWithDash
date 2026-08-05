@@ -26,7 +26,8 @@
     "hono": "^4.7.10",
     "nanoid": "^5.1.5",
     "nodemailer": "^9.0.3",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
@@ -34,6 +35,7 @@
     "@types/node": "^22.15.21",
     "@types/nodemailer": "^8.0.1",
     "@types/qrcode": "^1.5.5",
+    "@types/sql.js": "^1.4.11",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"
   }

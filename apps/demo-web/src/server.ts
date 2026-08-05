@@ -1,7 +1,8 @@
-import { serve } from "@hono/node-server";
+import { getRequestListener, serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
+import { createServer } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -27,7 +28,7 @@ import {
   fetchIdentitySummary,
   resolveDpnsName,
 } from "./lib/platform.js";
-import { getDb } from "./lib/db.js";
+import { initDb } from "./lib/db.js";
 import {
   addAllowlistEntry,
   addBan,
@@ -77,9 +78,6 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = new Hono();
-
-// Ensure DB is ready
-getDb();
 
 function cookieSecure(): boolean {
   // Secure cookies require HTTPS; plain HTTP localhost must omit Secure.
@@ -996,11 +994,64 @@ app.get("/healthz", (c) =>
   }),
 );
 
-console.log(`SIWD demo listening on http://${HOST}:${PORT}`);
-console.log(`PUBLIC_ORIGIN=${PUBLIC_ORIGIN}`);
-console.log(`Simulator: ${ENABLE_SIMULATOR ? "enabled" : "disabled"}`);
-console.log(
-  `Contact form: ${CONTACT_ENABLED ? "enabled (SIWD_CONTACT_TO set)" : "disabled"}`,
-);
+/** Injected by Phusion Passenger when present. */
+declare const PhusionPassenger:
+  | { configure: (opts: { autoInstall: boolean }) => void }
+  | undefined;
 
-serve({ fetch: app.fetch, hostname: HOST, port: PORT });
+async function startServer(): Promise<void> {
+  await initDb();
+
+  console.log(`PUBLIC_ORIGIN=${PUBLIC_ORIGIN}`);
+  console.log(`Simulator: ${ENABLE_SIMULATOR ? "enabled" : "disabled"}`);
+  console.log(
+    `Contact form: ${CONTACT_ENABLED ? "enabled (SIWD_CONTACT_TO set)" : "disabled"}`,
+  );
+
+  /**
+   * Hosted runtimes:
+   * - Phusion Passenger: listen on the special 'passenger' socket.
+   * - LiteSpeed Node (lsnode / CloudLinux): provide process.env.PORT.
+   * Local dev: HOST + PORT from config (default 127.0.0.1:8792).
+   */
+  const passengerSocket =
+    typeof PhusionPassenger !== "undefined" ||
+    process.env.PASSENGER_APP_ENV != null;
+
+  const lsPort = process.env.PORT ? Number(process.env.PORT) : NaN;
+  const underLiteSpeed =
+    Number.isFinite(lsPort) &&
+    (process.env.LSNODE != null ||
+      process.env.PASSENGER_BASE_URI != null ||
+      process.env.IN_PASSENGER === "1");
+
+  if (passengerSocket && typeof PhusionPassenger !== "undefined") {
+    try {
+      PhusionPassenger.configure({ autoInstall: false });
+    } catch {
+      /* optional */
+    }
+    const server = createServer(getRequestListener(app.fetch));
+    server.listen("passenger", () => {
+      console.log("SIWD demo listening via Phusion Passenger");
+    });
+  } else if (
+    underLiteSpeed ||
+    (Number.isFinite(lsPort) && process.env.NODE_ENV === "production")
+  ) {
+    const port = Number.isFinite(lsPort) ? lsPort : PORT;
+    const server = createServer(getRequestListener(app.fetch));
+    server.listen(port, "0.0.0.0", () => {
+      console.log(`SIWD demo listening on 0.0.0.0:${port} (hosted/proxy)`);
+    });
+  } else {
+    console.log(`SIWD demo listening on http://${HOST}:${PORT}`);
+    serve({ fetch: app.fetch, hostname: HOST, port: PORT });
+  }
+}
+
+// CJS require (lsnode/tsx) and ESM both need the promise to start work.
+void startServer().catch((err) => {
+  console.error("SIWD demo failed to start:", err);
+  process.exit(1);
+});

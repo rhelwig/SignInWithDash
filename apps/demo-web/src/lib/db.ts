@@ -1,6 +1,13 @@
-import Database from "better-sqlite3";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
+/**
+ * SQLite access for the demo site.
+ *
+ * Prefers better-sqlite3 (fast native). On hosts that cannot load the native
+ * addon (old glibc / no compiler — typical shared hosting), falls back to
+ * sql.js (WASM) with file persistence.
+ */
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { DB_PATH } from "./config.js";
 
 export type RequestStatus =
@@ -13,19 +20,175 @@ export type RequestStatus =
 
 export type AccountStatus = "active" | "deactivated" | "banned";
 
-let db: Database.Database | null = null;
+/** Minimal better-sqlite3-compatible surface used by this app. */
+export type RunResult = { changes: number; lastInsertRowid: number | bigint };
 
-export function getDb(): Database.Database {
+export type Statement = {
+  get: (...params: unknown[]) => unknown;
+  all: (...params: unknown[]) => unknown[];
+  run: (...params: unknown[]) => RunResult;
+};
+
+export type DemoDb = {
+  prepare: (sql: string) => Statement;
+  exec: (sql: string) => void;
+  pragma: (src: string) => unknown;
+  transaction: <T>(fn: () => T) => () => T;
+  close: () => void;
+};
+
+let db: DemoDb | null = null;
+let backend: "better-sqlite3" | "sql.js" = "better-sqlite3";
+let initPromise: Promise<DemoDb> | null = null;
+
+export function dbBackend(): typeof backend {
+  return backend;
+}
+
+/** Call once at process start (async-safe). Subsequent getDb() is sync. */
+export async function initDb(): Promise<DemoDb> {
   if (db) return db;
-  mkdirSync(dirname(DB_PATH), { recursive: true });
-  db = new Database(DB_PATH);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
-  migrate(db);
+  if (initPromise) return initPromise;
+  initPromise = (async () => {
+    mkdirSync(dirname(DB_PATH), { recursive: true });
+    try {
+      db = openBetterSqlite3(DB_PATH);
+      backend = "better-sqlite3";
+    } catch (e) {
+      console.warn(
+        "[siwd-db] better-sqlite3 unavailable, using sql.js WASM fallback:",
+        e instanceof Error ? e.message : e,
+      );
+      db = await openSqlJs(DB_PATH);
+      backend = "sql.js";
+    }
+    migrate(db);
+    console.log(`[siwd-db] backend=${backend} path=${DB_PATH}`);
+    return db;
+  })();
+  return initPromise;
+}
+
+export function getDb(): DemoDb {
+  if (!db) {
+    throw new Error("Database not initialized — call await initDb() at startup");
+  }
   return db;
 }
 
-function migrate(d: Database.Database) {
+function openBetterSqlite3(path: string): DemoDb {
+  const require = createRequire(import.meta.url);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const Database = require("better-sqlite3");
+  const d = new Database(path);
+  d.pragma("journal_mode = WAL");
+  d.pragma("foreign_keys = ON");
+  return d as DemoDb;
+}
+
+async function openSqlJs(path: string): Promise<DemoDb> {
+  const require = createRequire(import.meta.url);
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const initSqlJs = require("sql.js");
+  // sql.js package.json may not export "./package.json"; locate wasm via main entry.
+  const sqlJsEntry = require.resolve("sql.js");
+  // typically .../node_modules/sql.js/dist/sql-wasm.js
+  const wasmBinary = readFileSync(join(dirname(sqlJsEntry), "sql-wasm.wasm"));
+  const SQL = await initSqlJs({ wasmBinary });
+  const fileBuf = existsSync(path) ? readFileSync(path) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const raw: any = fileBuf ? new SQL.Database(fileBuf) : new SQL.Database();
+  raw.run("PRAGMA foreign_keys = ON;");
+
+  let dirty = false;
+  const persist = () => {
+    if (!dirty) return;
+    const data = raw.export();
+    writeFileSync(path, Buffer.from(data));
+    dirty = false;
+  };
+
+  const wrapStatement = (sql: string): Statement => ({
+    get: (...params: unknown[]) => {
+      const stmt = raw.prepare(sql);
+      try {
+        if (params.length) stmt.bind(normalizeParams(params));
+        if (stmt.step()) return stmt.getAsObject();
+        return undefined;
+      } finally {
+        stmt.free();
+      }
+    },
+    all: (...params: unknown[]) => {
+      const stmt = raw.prepare(sql);
+      const rows: unknown[] = [];
+      try {
+        if (params.length) stmt.bind(normalizeParams(params));
+        while (stmt.step()) rows.push(stmt.getAsObject());
+        return rows;
+      } finally {
+        stmt.free();
+      }
+    },
+    run: (...params: unknown[]) => {
+      raw.run(sql, normalizeParams(params));
+      dirty = true;
+      const changes = raw.getRowsModified() as number;
+      const idRow = raw.exec("SELECT last_insert_rowid() as id");
+      const lastInsertRowid =
+        idRow?.[0]?.values?.[0]?.[0] != null
+          ? Number(idRow[0].values[0][0])
+          : 0;
+      persist();
+      return { changes, lastInsertRowid };
+    },
+  });
+
+  return {
+    prepare: (sql: string) => wrapStatement(sql),
+    exec: (sql: string) => {
+      raw.exec(sql);
+      dirty = true;
+      persist();
+    },
+    pragma: (src: string) => {
+      raw.run(`PRAGMA ${src}`);
+      return undefined;
+    },
+    transaction:
+      <T>(fn: () => T) =>
+      () => {
+        raw.run("BEGIN");
+        try {
+          const result = fn();
+          raw.run("COMMIT");
+          dirty = true;
+          persist();
+          return result;
+        } catch (e) {
+          try {
+            raw.run("ROLLBACK");
+          } catch {
+            /* ignore */
+          }
+          throw e;
+        }
+      },
+    close: () => {
+      persist();
+      raw.close();
+    },
+  };
+}
+
+function normalizeParams(params: unknown[]): unknown[] {
+  if (params.length === 1 && Array.isArray(params[0])) {
+    return params[0] as unknown[];
+  }
+  return params.map((p) => (p === undefined ? null : p));
+}
+
+function migrate(d: DemoDb) {
   d.exec(`
     CREATE TABLE IF NOT EXISTS accounts (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,7 +276,6 @@ function migrate(d: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_ban_kind_value ON ban_entries(kind, value);
   `);
 
-  // Lightweight migrations for existing demo DBs
   const sessionCols = d
     .prepare(`PRAGMA table_info(sessions)`)
     .all() as Array<{ name: string }>;
@@ -128,7 +290,6 @@ function migrate(d: Database.Database) {
     d.exec(`ALTER TABLE accounts ADD COLUMN email TEXT`);
   }
 
-  // Singleton access settings row
   d.prepare(
     `INSERT OR IGNORE INTO site_access_settings
       (id, allowlist_enabled, user_invites_enabled, invites_per_user)

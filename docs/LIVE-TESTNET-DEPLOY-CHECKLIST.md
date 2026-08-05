@@ -78,16 +78,22 @@ Set on the host, e.g. `SIWD_VERIFY_MODE=platform`.
 - [x] cPanel subdomain `dashlogin` created (docroot `~/dashlogin.ronhelwig.com`).
 - [x] DNS A records for `dashlogin` / `www.dashlogin` (shared IP).
 - [x] Wildcard LE cert covers `*.ronhelwig.com` — install on the new vhost.
-- [ ] Deploy Node demo-web (Passenger app or reverse proxy) with env:
+- [x] Deploy Node demo-web (CloudLinux Node / LiteSpeed) with env:
   - `SIWD_PUBLIC_ORIGIN=https://dashlogin.ronhelwig.com`
   - `SIWD_VERIFY_MODE=platform`
   - `SIWD_ENABLE_SIMULATOR=false`
   - `SIWD_SITE_OWNER_NAMES=ronhelwig4test`
-- [ ] E2E smoke on the public origin.
+- [x] `/healthz` + public pages return 200 on HTTPS.
+- [ ] Full E2E login with phone + real testnet identity on public origin.
 
-**Note:** Account allows up to **4 Passenger apps**; shell is bash. `better-sqlite3`
-native module may need compile tools or a pure-JS sqlite alternative on shared hosting —
-verify during deploy. Do not point the process at apex or other subdomains.
+**Host notes (Namecheap / CloudLinux / LiteSpeed):**
+
+- App root: `~/siwd-demo/apps/demo-web` (sibling `~/siwd-demo/packages/protocol`).
+- Node 20 via `cloudlinux-selector`; startup file **`app.cjs`** (lsnode uses `require()`).
+- `better-sqlite3` prebuilds need newer glibc than the host (2.28) and compilers are
+  blocked for the account — production uses **sql.js WASM fallback** automatically.
+- Do not leave a static `index.html` in the subdomain docroot (it shadows the app).
+- Max **4** Passenger/Node apps on this plan.
 
 ## Can wait (after live)
 
