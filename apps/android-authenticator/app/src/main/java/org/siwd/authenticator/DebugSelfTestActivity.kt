@@ -26,7 +26,8 @@ import java.util.concurrent.TimeUnit
  *   adb shell am start -n org.siwd.authenticator.testnet.debug/.DebugSelfTestActivity
  *   adb logcat -s SiwdSelfTest:I
  *
- * Optional: -e proxy http://10.0.0.58:8792  (demo-web checks only; discovery is on-device)
+ * Optional: -e proxy http://127.0.0.1:8792  (demo-web healthz only; discovery is on-device).
+ * Use your machine’s LAN origin or adb reverse as needed — see docs/LOCAL-DEV-CONFIG.md.
  */
 class DebugSelfTestActivity : Activity() {
     companion object {

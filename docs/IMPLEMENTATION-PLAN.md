@@ -126,17 +126,19 @@ Exit: the entire user journey works locally without claiming Dash verification.
 
 ### M2 — Real Platform verification
 
-- [ ] Connect verifier to Dash Platform testnet.
-- [ ] Retrieve identity and eligible active authentication key.
-- [ ] Resolve and normalize DPNS name; reject contested/unresolved names.
-- [ ] Verify real test signatures.
-- [ ] Retrieve Platform identity/DPNS state via pinned SDK (trust successful
-      reads; login fails if unavailable).
+- [x] Connect verifier to Dash Platform testnet (`SIWD_VERIFY_MODE=platform|hybrid`).
+- [x] Retrieve identity and eligible active authentication key (HIGH auth).
+- [x] Resolve DPNS name for display/binding (contested edge cases still limited).
+- [x] Verify real testnet signatures (E2E with imported testnet identity).
+- [x] Retrieve Platform identity/DPNS state via worker/SDK path (login fails
+      hard when mode is `platform` and Platform is unavailable).
 - [ ] Optional sampled multi-endpoint cross-check configuration (not full
       fan-out).
-- [ ] Add network outage / unavailable Platform tests (expect login failure).
+- [ ] Add dedicated network outage / unavailable Platform automated tests.
+- [x] Dev simulator can import a real testnet phrase and sign (session only).
 
-Exit: a command-line signer using a generated testnet phrase can authenticate.
+Exit: a signer using a real testnet identity can authenticate against the demo.
+**Met** for hybrid/platform local demos; public-host soak still pending.
 
 ### M3a — Standalone Android authenticator (primary path)
 
@@ -144,12 +146,15 @@ Exit: a command-line signer using a generated testnet phrase can authenticate.
       `apps/android-authenticator`.
 - [x] Kotlin golden-vector tests pass against `test-vectors/v1`.
 - [x] Dev fixture identities (alice/bob) + paste capability URL + approve UI.
-- [x] Per-site last Dash name preference stub (`SiteNamePrefs`).
-- [ ] Camera QR scan without Play services.
-- [ ] BIP-39 testnet phrase import + Keystore-backed storage.
-- [ ] Live Platform identity/DPNS discovery (pin Kotlin/Rust SDK).
-- [ ] Biometric/device credential gate on every approval.
-- [ ] Debug APK sideload on Samsung Galaxy A7.
+- [x] Per-site last Dash name preference (`SiteNamePrefs`).
+- [x] Camera QR scan without Play services (CameraX + ZXing).
+- [x] BIP-39 testnet phrase import + encrypted storage (+ optional passphrase).
+- [x] Live Platform identity/DPNS discovery path (on-device + trusted quorums;
+      native SDK stability still partial on some devices).
+- [x] Biometric/device credential gate on approval.
+- [x] Debug APK build + sideload on a physical Android device.
+- [x] Known-sites list after successful approve.
+- [x] Testnet launcher branding (mainnet masters reserved for a future flavor).
 
 ### M3 — Dash Android wallet integration (demo, optional)
 
@@ -169,17 +174,19 @@ and produces a golden-vector-compatible SIWD signature.
 
 ### M4 — QR login
 
-- [ ] Scan and parse request URLs.
-- [ ] Fetch and validate request.
-- [ ] Implement trusted approval UI and device authentication.
-- [ ] Sign canonical challenge.
-- [ ] Submit response and return to browser.
-- [ ] Complete registration, login, link, logout, and unlink flows.
-- [ ] Complete the demo site's `identity_bound` policy and name-change tests.
-- [ ] Run adversarial QR and race-condition tests.
+- [x] Scan and parse request URLs (QR + paste + HTTPS deep link).
+- [x] Fetch and validate request.
+- [x] Trusted approval UI + device authentication.
+- [x] Sign canonical challenge.
+- [x] Submit response; browser status/finish completes session.
+- [x] Registration/login auto-create for `identity_bound` demo accounts.
+- [ ] Complete name-change / rebind tests for `identity_bound` display updates.
+- [ ] Run fuller adversarial QR and race-condition automated suite.
+- [x] Manual desktop↔phone testnet login with real identity (local).
 
 Exit: desktop-to-phone testnet identity-bound login meets the applicable
-success criteria in `SPECS.md`.
+success criteria in `SPECS.md`. **Largely met** locally; expand automated
+adversarial coverage and public-host E2E.
 
 ### M5 — Name-bound ownership
 
@@ -203,11 +210,11 @@ native DPNS ownership change safely transfers a name-bound account.
 
 - [ ] Add signed APK build and checksum instructions.
 - [ ] Generate SBOM and dependency/license report.
-- [ ] Add vulnerability reporting and privacy documentation.
-- [ ] Document sideloading, testnet funding/identity prerequisites, reset, and
-      uninstall.
-- [ ] Produce a repeatable end-to-end manual test checklist.
+- [x] Short privacy page + footer notice on demo-web (`/privacy`).
+- [x] Document sideloading, testnet-only rules, APK download path (debug).
+- [x] Manual E2E checklists (`LIVE-TESTNET-DEPLOY-CHECKLIST`, local smoke).
 - [ ] Obtain an independent security review appropriate to the audience.
+- [ ] Public host running demo-web with hardened env (owners, no simulator).
 
 Exit: a small external test group can verify provenance and safely use generated
 testnet credentials.
@@ -239,17 +246,18 @@ Mainnet remains a separate gated decision.
    `test-vectors/v1/`).
 2. [Done] **M1** demo website + simulator (`apps/demo-web`, see
    `docs/DEMO-SITE.md`). Expand automated edge-case tests as needed.
-3. **M2**: pin Evo SDK; real testnet identity/DPNS verification; login fails if
-   Platform unavailable.
-4. Verify the Kotlin SDK artifact/JNI packaging and the phrase-deletion
-   lifecycle against the wallet's key storage, without writing application UI.
-5. Inspect Android upstream contribution boundaries for the smallest demo SIWD
-   module that could plausibly be reviewed.
-6. Optional later: public deploy to `dashlogin.ronhelwig.com` after local soak;
-   align SIWD URI scheme with wallet maintainers.
+3. [Done enough for demos] **M2** hybrid/platform verification + real testnet
+   identity login; finish outage tests and multi-endpoint options later.
+4. [Done enough for demos] **M3a / M4** standalone authenticator QR + import +
+   approve; harden on-device discovery; optional mainnet flavor later.
+5. **Public testnet host**: deploy demo-web with HTTPS, `SIWD_VERIFY_MODE=platform`,
+   simulator off, `SIWD_SITE_OWNER_NAMES` set (see
+   `docs/LIVE-TESTNET-DEPLOY-CHECKLIST.md`).
+6. Optional: wallet integration demo (M3) and fuller automated adversarial suite.
+7. Optional later: align SIWD URI scheme with wallet maintainers; GrapheneOS matrix.
 
-Next build slice: continue standalone authenticator (QR, phrase import, A7
-sideload) and/or M2 Platform verification on the demo site.
+Next build slice: **deploy and smoke the public testnet demo**, then on-device
+Platform discovery reliability.
 
 ## 5. Verification strategy
 

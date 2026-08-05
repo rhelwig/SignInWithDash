@@ -1,7 +1,12 @@
 # Demo website
 
 **App path:** `apps/demo-web`  
-**Status:** M1 localhost demo with **simulator verification** (no live Platform yet)
+**Status:** Local (and public-prep) **testnet** demo. Verification modes:
+`simulator` | `hybrid` (default) | `platform`. Real Platform identities work in
+hybrid/platform; fixtures (alice/bob) work in hybrid/simulator.
+
+For host-specific LAN/emulator notes, see [LOCAL-DEV-CONFIG.md](LOCAL-DEV-CONFIG.md).
+For public deploy, see [LIVE-TESTNET-DEPLOY-CHECKLIST.md](LIVE-TESTNET-DEPLOY-CHECKLIST.md).
 
 ## Run locally
 
@@ -9,7 +14,7 @@
 cd packages/protocol && npm install && npm run build
 cd ../../apps/demo-web && npm install
 npm run dev
-# open http://127.0.0.1:8792
+# open http://127.0.0.1:8792  (override with SIWD_PUBLIC_ORIGIN / PORT / HOST)
 ```
 
 Smoke test (starts server if needed):
@@ -50,12 +55,14 @@ For a future public host, set e.g.:
 
 ```bash
 SIWD_PUBLIC_ORIGIN=https://dashlogin.ronhelwig.com
-SIWD_ENABLE_SIMULATOR=false   # after a real authenticator exists
+SIWD_VERIFY_MODE=platform
+SIWD_ENABLE_SIMULATOR=false
+SIWD_SITE_OWNER_NAMES=your-testnet-name
 HOST=127.0.0.1
 PORT=8792
 ```
 
-and reverse-proxy TLS to that port.
+and reverse-proxy TLS (or Passenger) to that port.
 
 ## Pages
 
@@ -144,13 +151,15 @@ only that **testnet** phrase into SIWD.
 - Per-site last-used **Dash name** should be remembered with identity + site
   origin so re-login defaults to the name used at account creation; changing
   the name re-fetches / re-binds the challenge display as needed.
-- Android authenticator (testnet): build from `apps/android-authenticator` (preferred) or
-  download the debug APK from `/downloads/siwd-authenticator-testnet-debug.apk` on a running
-  demo-web instance. First sideload target: **Samsung Galaxy A7**.
+- Android authenticator (testnet): build from `apps/android-authenticator` (preferred)
+  or download the debug APK from `/downloads/siwd-authenticator-testnet-debug.apk`
+  on a running demo-web instance (APK artifacts are gitignored; rebuild to refresh).
 
-## Platform proxy (authenticator discovery)
+## Platform helpers (dev / tooling)
 
-The demo also exposes testnet Platform helpers used by the Android app:
+The demo exposes testnet Platform helpers primarily for the **dev simulator** and
+debugging. The Android authenticator’s preferred path is **on-device** discovery
+(not a long-term website proxy for end users):
 
 | Path | Purpose |
 | --- | --- |

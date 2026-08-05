@@ -66,10 +66,12 @@ Set on the host, e.g. `SIWD_VERIFY_MODE=platform`.
 - [x] APK download on Get Started (wired; rebuild + copy on release; APK gitignored).
 - [x] Short public “how to test” page (`/how-to-test`) + privacy note (`/privacy`).
 - [x] Un-hardcode LAN IP defaults in authenticator (prefs / paste; no LAN intent-filter default).
-- [x] Cleartext limited via `network_security_config` (loopback/LAN only).
+- [x] Cleartext limited via `network_security_config` (loopback + AOSP emulator `10.0.2.2` only;
+      personal LAN IPs not committed — see `docs/LOCAL-DEV-CONFIG.md`).
 - [x] Legal/privacy one-liner in footer + `/privacy`.
 - [x] Mainnet icon master named (`siwd-authenticator-mainnet-icon.*`) for future flavor.
 - [x] Optional BIP-39 passphrase (13th/25th word) on import (Android + simulator).
+- [x] Docs refreshed for other developers (README, authenticator README, plan checkboxes).
 
 ## Hosting prep for `https://dashlogin.ronhelwig.com`
 

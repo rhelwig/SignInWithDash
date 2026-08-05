@@ -1,8 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Cleartext HTTP only for local/dev demo hosts.
-  Production SIWD sites (HTTPS) are unrestricted by this file.
-  Debug self-test may still target LAN demo-web; release builds should use HTTPS only.
+  Cleartext HTTP is denied by default. Production SIWD sites use HTTPS and need
+  no entries here.
+
+  Allowed loopback hosts for local demos only:
+  - 127.0.0.1 / localhost — host loopback (often via adb reverse on a device)
+  - 10.0.2.2 — AOSP Android Emulator alias for the development machine's
+    loopback (standard across stock emulators; not a LAN address)
+
+  To cleartext-HTTP a physical phone on Wi‑Fi, either:
+  1) adb reverse + 127.0.0.1, or
+  2) temporarily add YOUR LAN IP in a domain-config (debug builds only).
+  See docs/LOCAL-DEV-CONFIG.md. Do not commit personal LAN addresses.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
@@ -10,14 +19,5 @@
         <domain includeSubdomains="false">127.0.0.1</domain>
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
-        <!-- Emulator host loopback; physical LAN demos use user-pasted HTTPS or debug cleartext below -->
-    </domain-config>
-    <!--
-      Optional local LAN host for development only.
-      Prefer HTTPS production origins (e.g. https://dashlogin.ronhelwig.com).
-      Keep this list empty of production hostnames.
-    -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.0.0.58</domain>
     </domain-config>
 </network-security-config>

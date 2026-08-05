@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "org.siwd.authenticator.testnet"
-        // Galaxy A7 (2018) class devices: Android 8+; keep room for older sideload targets
+        // Android 8.0+ (API 26) — broad sideload coverage without Play Services requirements
         minSdk = 26
         targetSdk = 35
         versionCode = 1

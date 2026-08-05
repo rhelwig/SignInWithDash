@@ -236,8 +236,8 @@ export function getStartedPage(account: AccountRow | null) {
     keeps site-login signing apart from a full payment wallet; wallets may still choose to
     embed SIWD later.</p>
     <p class="muted">Build tips: JDK 21, Android SDK; see the authenticator
-    <a href="${esc(REPO_URL)}/tree/main/apps/android-authenticator">README</a>.
-    First sideload target for development was a Samsung Galaxy A7 class device.</p>
+    <a href="${esc(REPO_URL)}/tree/main/apps/android-authenticator">README</a>
+    and <a href="${esc(REPO_URL)}/blob/main/docs/LOCAL-DEV-CONFIG.md">local network config notes</a>.</p>
     <ul class="checklist">
       <li>Use only generated testnet credentials — never a mainnet phrase</li>
       <li>Prefer scanning the QR from a device you control</li>
