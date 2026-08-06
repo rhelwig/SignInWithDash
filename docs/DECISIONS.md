@@ -446,3 +446,21 @@ Rationale:
 - Feedback channels need a reply address without turning email into an auth factor.
 - Host inboxes and SMTP credentials must stay out of git.
 - Account transparency for testers must not dump full third-party emails.
+## D-028 — Health-check and fail over the Platform bridge
+
+**Decision:** A configured Platform bridge is checked through Evo SDK connection
+to testnet DAPI, rather than treating an HTTP listener as healthy. The verifier
+accepts an ordered list of independently supervised bridge URLs and tries them
+in order. Direct local-worker fallback is explicit and disabled by default
+because shared hosts may be unable to reach DAPI.
+
+**Why:** The public demo's reverse tunnel is a deployment dependency. A live web
+process or bridge listener does not prove that the full bridge → SDK → DAPI path
+works, and one interactive reverse tunnel is a single point of failure.
+
+**Operational consequence:** Monitor
+`/dash-auth/v1/platform/health`, supervise bridges and tunnels with restart and
+SSH keepalives, and configure at least two bridge URLs when independent bridge
+machines are available.
+**Date:** 2026-08-06
+**Status:** Accepted

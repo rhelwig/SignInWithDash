@@ -1,0 +1,14 @@
+[Unit]
+Description=Sign in with Dash reverse SSH tunnel
+Wants=network-online.target
+After=network-online.target siwd-platform-bridge.service
+Requires=siwd-platform-bridge.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ssh -NT -i %h/.ssh/siwd_platform_tunnel_ed25519 -o BatchMode=yes -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=%h/.ssh/known_hosts -R 127.0.0.1:19793:127.0.0.1:19793 -p 21098 ronhcbvr@ronhelwig.com
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=default.target

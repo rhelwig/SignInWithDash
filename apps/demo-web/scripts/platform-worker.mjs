@@ -135,6 +135,11 @@ async function main() {
   const sdk = EvoSDK.testnetTrusted();
   await sdk.connect();
 
+  if (cmd === "health") {
+    console.log(JSON.stringify({ ok: true, network: "testnet", source: "evo-sdk" }));
+    return;
+  }
+
   if (cmd === "resolve") {
     const label = String(arg || "").replace(/\.dash$/i, "").trim().toLowerCase();
     const identityId = (await sdk.dpns.resolveName(label)) ?? null;

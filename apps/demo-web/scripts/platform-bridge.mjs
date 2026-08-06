@@ -74,11 +74,29 @@ function send(res, status, obj) {
   res.end(body);
 }
 
+let healthCache = null;
+let healthInFlight = null;
+
+async function platformHealth() {
+  if (healthCache && healthCache.expiresAt > Date.now()) return healthCache.result;
+  if (healthInFlight) return healthInFlight;
+  healthInFlight = runWorker(["health"], 30_000)
+    .then((result) => {
+      const health = { ...result, bridge: true };
+      healthCache = { expiresAt: Date.now() + 15_000, result: health };
+      return health;
+    })
+    .finally(() => {
+      healthInFlight = null;
+    });
+  return healthInFlight;
+}
+
 const server = createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
     if (req.method === "GET" && url.pathname === "/healthz") {
-      return send(res, 200, { ok: true, bridge: true });
+      return send(res, 200, await platformHealth());
     }
     if (req.method === "GET" && url.pathname === "/resolve") {
       const name = (url.searchParams.get("name") || "").replace(/\.dash$/i, "");

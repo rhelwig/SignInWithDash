@@ -1,0 +1,18 @@
+[Unit]
+Description=Sign in with Dash DAPI bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.local/share/siwd-platform-bridge
+Environment=SIWD_PLATFORM_BRIDGE_HOST=127.0.0.1
+Environment=SIWD_PLATFORM_BRIDGE_PORT=19793
+ExecStart=/usr/bin/node %h/.local/share/siwd-platform-bridge/platform-bridge.mjs
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=default.target

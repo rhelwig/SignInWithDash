@@ -27,6 +27,10 @@ SIWD_SHARED_HOST_NOTICE=true
 SIWD_DATA_DIR=/home/ronhcbvr/siwd-demo/apps/demo-web/data
 SIWD_DB_PATH=/home/ronhcbvr/siwd-demo/apps/demo-web/data/demo.sqlite
 NODE_ENV=production
+# Legacy single bridge:
+SIWD_PLATFORM_BRIDGE=http://127.0.0.1:19792
+# Preferred when two independently supervised tunnels are available:
+# SIWD_PLATFORM_BRIDGES=http://127.0.0.1:19792,http://127.0.0.1:19793
 ```
 
 Optional later: `SIWD_CONTACT_TO` + SMTP for the contact form.
@@ -48,6 +52,37 @@ Optional later: `SIWD_CONTACT_TO` + SMTP for the contact form.
    # or: touch ~/siwd-demo/apps/demo-web/tmp/restart.txt
    ```
 5. Smoke: `curl -sS https://dashlogin.ronhelwig.com/healthz`
+6. Verify the complete bridge → Evo SDK → DAPI path (not just the web app):
+   ```bash
+   curl -fsS https://dashlogin.ronhelwig.com/dash-auth/v1/platform/health
+   curl -fsS \
+     'https://dashlogin.ronhelwig.com/dash-auth/v1/platform/resolve?name=ronhelwig4test'
+   ```
+
+## Keep the Platform bridge alive
+
+The public host cannot reach testnet DAPI directly. Both the local bridge and
+its reverse SSH tunnel are therefore production dependencies; running either
+from an interactive terminal will leave every login returning
+`platform_unavailable` when that terminal exits.
+
+Run both under a service manager (systemd user services are suitable on the
+bridge machine), with automatic restart and SSH keepalives. The tunnel command
+should include:
+
+```bash
+ssh -N \
+  -o ExitOnForwardFailure=yes \
+  -o ServerAliveInterval=30 \
+  -o ServerAliveCountMax=3 \
+  -R 127.0.0.1:19792:127.0.0.1:19792 \
+  -p 21098 user@host
+```
+
+For failover, run a second independently supervised bridge/tunnel on port
+`19793` and set `SIWD_PLATFORM_BRIDGES` as shown above. The verifier tries the
+URLs in order. Do not enable `SIWD_PLATFORM_LOCAL_FALLBACK` on this shared host;
+it is only useful on hosts that can reach DAPI directly.
 
 ## Create app (once)
 

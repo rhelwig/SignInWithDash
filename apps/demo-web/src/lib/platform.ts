@@ -18,22 +18,28 @@ const workerPath = join(
   "platform-worker.mjs",
 );
 
-const PLATFORM_BRIDGE = (process.env.SIWD_PLATFORM_BRIDGE || "")
-  .trim()
-  .replace(/\/$/, "");
+const PLATFORM_BRIDGES = [
+  ...(process.env.SIWD_PLATFORM_BRIDGES || "").split(","),
+  process.env.SIWD_PLATFORM_BRIDGE || "",
+]
+  .map((url) => url.trim().replace(/\/$/, ""))
+  .filter((url, index, all) => url && all.indexOf(url) === index);
+
+const LOCAL_FALLBACK = process.env.SIWD_PLATFORM_LOCAL_FALLBACK === "1";
 
 async function runViaBridge(
+  bridge: string,
   pathAndQuery: string,
   init?: RequestInit,
 ): Promise<unknown> {
-  const url = `${PLATFORM_BRIDGE}${pathAndQuery}`;
+  const url = `${bridge}${pathAndQuery}`;
   const resp = await fetch(url, {
     ...init,
     headers: {
       Accept: "application/json",
       ...(init?.headers || {}),
     },
-    signal: AbortSignal.timeout(90_000),
+    signal: AbortSignal.timeout(30_000),
   });
   const text = await resp.text();
   let parsed: unknown;
@@ -57,26 +63,73 @@ async function runViaBridge(
   return parsed;
 }
 
+async function runViaBridges(
+  pathAndQuery: string,
+  init?: RequestInit,
+): Promise<unknown> {
+  const failures: string[] = [];
+  for (const bridge of PLATFORM_BRIDGES) {
+    try {
+      return await runViaBridge(bridge, pathAndQuery, init);
+    } catch (error) {
+      let label = bridge;
+      try {
+        label = new URL(bridge).host;
+      } catch {
+        // Keep the configured value in diagnostics when it is not a valid URL.
+      }
+      failures.push(
+        `${label}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  throw new Error(`All Platform bridges unavailable (${failures.join("; ")})`);
+}
+
 function runWorker(args: string[], timeoutMs = 90_000): Promise<unknown> {
-  // Prefer remote bridge when configured (shared hosting).
-  if (PLATFORM_BRIDGE) {
+  // Prefer remote bridges when configured (shared hosting). Multiple URLs let
+  // production fail over without changing the authentication protocol.
+  if (PLATFORM_BRIDGES.length) {
     const [cmd, arg] = args;
     if (cmd === "resolve") {
-      return runViaBridge(`/resolve?name=${encodeURIComponent(arg || "")}`);
+      return runViaBridges(`/resolve?name=${encodeURIComponent(arg || "")}`)
+        .catch((error) => {
+          if (LOCAL_FALLBACK) return runLocalWorker(args, timeoutMs);
+          throw error;
+        });
     }
     if (cmd === "identity") {
-      return runViaBridge(`/identity/${encodeURIComponent(arg || "")}`);
+      return runViaBridges(`/identity/${encodeURIComponent(arg || "")}`)
+        .catch((error) => {
+          if (LOCAL_FALLBACK) return runLocalWorker(args, timeoutMs);
+          throw error;
+        });
     }
     if (cmd === "discover") {
       const hashes = (arg || "").split(",").filter(Boolean);
-      return runViaBridge("/discover", {
+      return runViaBridges("/discover", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ publicKeyHashes: hashes }),
+      }).catch((error) => {
+        if (LOCAL_FALLBACK) return runLocalWorker(args, timeoutMs);
+        throw error;
+      });
+    }
+    if (cmd === "health") {
+      return runViaBridges("/healthz").catch((error) => {
+        if (LOCAL_FALLBACK) return runLocalWorker(args, timeoutMs);
+        throw error;
       });
     }
   }
 
+  return runLocalWorker(args, timeoutMs);
+}
+
+function runLocalWorker(args: string[], timeoutMs: number): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [workerPath, ...args], {
       cwd: join(dirname(workerPath), ".."),
@@ -118,6 +171,45 @@ function runWorker(args: string[], timeoutMs = 90_000): Promise<unknown> {
       }
     });
   });
+}
+
+type PlatformHealth = {
+  ok: true;
+  network: string;
+  source: string;
+};
+
+let healthCache:
+  | { expiresAt: number; result: PlatformHealth }
+  | undefined;
+let healthInFlight: Promise<PlatformHealth> | undefined;
+
+export async function checkPlatformConnectivity(): Promise<PlatformHealth> {
+  if (healthCache && healthCache.expiresAt > Date.now()) {
+    return healthCache.result;
+  }
+  if (healthInFlight) return healthInFlight;
+
+  healthInFlight = (async () => {
+    const result = (await runWorker(["health"], 30_000)) as {
+      network?: string;
+      source?: string;
+    };
+    const health: PlatformHealth = {
+      ok: true,
+      network: result.network || "testnet",
+      source:
+        result.source ||
+        (PLATFORM_BRIDGES.length ? "platform-bridge" : "local-worker"),
+    };
+    healthCache = { expiresAt: Date.now() + 15_000, result: health };
+    return health;
+  })();
+  try {
+    return await healthInFlight;
+  } finally {
+    healthInFlight = undefined;
+  }
 }
 
 export async function resolveDpnsName(

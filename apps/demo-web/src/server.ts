@@ -25,6 +25,7 @@ import { isValidEmailShape } from "./lib/display.js";
 import { sendContactMail } from "./lib/mail.js";
 import {
   discoverByPublicKeyHashes,
+  checkPlatformConnectivity,
   fetchIdentitySummary,
   resolveDpnsName,
 } from "./lib/platform.js";
@@ -937,6 +938,22 @@ app.get("/dash-auth/v1/platform/resolve", async (c) => {
             : `resolve failed: ${String(e)}`;
     console.error("platform/resolve error", e);
     return jsonError("platform_unavailable", msg, 503);
+  }
+});
+
+app.get("/dash-auth/v1/platform/health", async (c) => {
+  if (!rateLimit(`plath:${clientKey(c)}`, 12, 60_000)) {
+    return jsonError("rate_limited", "Too many requests", 429);
+  }
+  try {
+    return c.json(await checkPlatformConnectivity());
+  } catch (e) {
+    console.error("platform/health error", e);
+    return jsonError(
+      "platform_unavailable",
+      e instanceof Error ? e.message : "Platform health check failed",
+      503,
+    );
   }
 });
 
