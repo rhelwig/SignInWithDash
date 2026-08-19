@@ -81,11 +81,11 @@ export const REPO_URL = env(
 );
 
 /**
- * When true (default), show the shared-host courtesy notice on public pages.
- * Set SIWD_SHARED_HOST_NOTICE=false for a private deployment you control.
+ * When true, show a shared-host courtesy notice on public pages.
+ * Off by default (VPS / self-hosted). Set SIWD_SHARED_HOST_NOTICE=true if needed.
  */
 export const SHARED_HOST_NOTICE =
-  env("SIWD_SHARED_HOST_NOTICE", "true").toLowerCase() !== "false";
+  env("SIWD_SHARED_HOST_NOTICE", "false").toLowerCase() === "true";
 
 /**
  * Contact form (signed-in users only). Generalized for self-hosters:

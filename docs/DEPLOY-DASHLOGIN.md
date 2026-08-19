@@ -2,105 +2,72 @@
 
 Live URL: **https://dashlogin.ronhelwig.com/**
 
-## Layout on host
+The public demo runs on the OVH VPS (systemd + Caddy). Deploy tooling lives in
+`Projects/VpsManage` (`scripts/deploy-dashlogin.sh`). DNS for this hostname
+points at the VPS; HTTPS is Let's Encrypt via Caddy.
+
+## Layout on the VPS
 
 ```text
-~/siwd-demo/
-  packages/protocol/     # built dist + package.json (file: dependency)
-  apps/demo-web/         # CloudLinux Node app root
-    app.cjs              # startup (CommonJS for LiteSpeed lsnode)
-    .env                 # production secrets (mode 600, not in git)
-    data/demo.sqlite     # sql.js-backed DB file
-    passenger.log
-~/dashlogin.ronhelwig.com/
-  .htaccess              # Passenger/LiteSpeed config + SetEnv (managed by selector)
+/opt/dashlogin/              # protocol + demo-web (git deploy; no .env)
+/var/lib/dashlogin/          # sqlite data dir
+  demo.sqlite
+/etc/dashlogin.env           # production env (mode 600)
+/etc/systemd/system/dashlogin.service
 ```
 
-## Production env (host only)
+Caddy terminates HTTP/HTTPS and reverse-proxies to `127.0.0.1:8792`.
+The app binds loopback only.
+
+## Production env (`/etc/dashlogin.env`)
 
 ```bash
 SIWD_PUBLIC_ORIGIN=https://dashlogin.ronhelwig.com
 SIWD_VERIFY_MODE=platform
 SIWD_ENABLE_SIMULATOR=false
 SIWD_SITE_OWNER_NAMES=ronhelwig4test
-SIWD_SHARED_HOST_NOTICE=true
-SIWD_DATA_DIR=/home/ronhcbvr/siwd-demo/apps/demo-web/data
-SIWD_DB_PATH=/home/ronhcbvr/siwd-demo/apps/demo-web/data/demo.sqlite
+SIWD_SHARED_HOST_NOTICE=false
+SIWD_DATA_DIR=/var/lib/dashlogin
+SIWD_DB_PATH=/var/lib/dashlogin/demo.sqlite
 NODE_ENV=production
-# Legacy single bridge:
-SIWD_PLATFORM_BRIDGE=http://127.0.0.1:19792
-# Preferred when two independently supervised tunnels are available:
-# SIWD_PLATFORM_BRIDGES=http://127.0.0.1:19792,http://127.0.0.1:19793
+HOST=127.0.0.1
+PORT=8792
 ```
+
+Do **not** set `SIWD_PLATFORM_BRIDGE` / `SIWD_PLATFORM_BRIDGES` here — the VPS
+reaches Dash testnet DAPI directly.
 
 Optional later: `SIWD_CONTACT_TO` + SMTP for the contact form.
 
-## Redeploy (from a machine with SSH password/key to cPanel)
+The database is a **fresh** SQLite file on this host. There are no accounts to
+copy from the previous public demo.
 
-1. Build protocol: `cd packages/protocol && npm run build`
-2. Upload monorepo subset (protocol + demo-web) to `~/siwd-demo/`
-3. On host with Node 20 on `PATH`:
-   ```bash
-   cd ~/siwd-demo/packages/protocol && npm install --omit=dev
-   cd ~/siwd-demo/apps/demo-web && npm install
-   ```
-4. Restart:
-   ```bash
-   cloudlinux-selector restart --json --interpreter=nodejs \
-     --domain dashlogin.ronhelwig.com \
-     --app-root /home/ronhcbvr/siwd-demo/apps/demo-web
-   # or: touch ~/siwd-demo/apps/demo-web/tmp/restart.txt
-   ```
-5. Smoke: `curl -sS https://dashlogin.ronhelwig.com/healthz`
-6. Verify the complete bridge → Evo SDK → DAPI path (not just the web app):
-   ```bash
-   curl -fsS https://dashlogin.ronhelwig.com/dash-auth/v1/platform/health
-   curl -fsS \
-     'https://dashlogin.ronhelwig.com/dash-auth/v1/platform/resolve?name=ronhelwig4test'
-   ```
+## Redeploy
 
-## Keep the Platform bridge alive
-
-The public host cannot reach testnet DAPI directly. Both the local bridge and
-its reverse SSH tunnel are therefore production dependencies; running either
-from an interactive terminal will leave every login returning
-`platform_unavailable` when that terminal exits.
-
-Run both under a service manager (systemd user services are suitable on the
-bridge machine), with automatic restart and SSH keepalives. The tunnel command
-should include:
+From a machine with `vps-agent` SSH access:
 
 ```bash
-ssh -N \
-  -o ExitOnForwardFailure=yes \
-  -o ServerAliveInterval=30 \
-  -o ServerAliveCountMax=3 \
-  -R 127.0.0.1:19792:127.0.0.1:19792 \
-  -p 21098 user@host
+~/Projects/VpsManage/scripts/deploy-dashlogin.sh
 ```
 
-For failover, run a second independently supervised bridge/tunnel on port
-`19793` and set `SIWD_PLATFORM_BRIDGES` as shown above. The verifier tries the
-URLs in order. Do not enable `SIWD_PLATFORM_LOCAL_FALLBACK` on this shared host;
-it is only useful on hosts that can reach DAPI directly.
+That script:
 
-## Create app (once)
+1. Builds `packages/protocol`
+2. rsyncs protocol + demo-web to the VPS (excludes `node_modules`, sqlite, `.env`, APKs)
+3. Installs into `/opt/dashlogin`, removes any copied `.env`, `npm install`s
+4. Restarts `dashlogin.service`
+
+## Smoke
 
 ```bash
-cloudlinux-selector create --json --interpreter=nodejs \
-  --domain dashlogin.ronhelwig.com \
-  --app-root /home/ronhcbvr/siwd-demo/apps/demo-web \
-  --app-uri / \
-  --version 20 \
-  --app-mode production \
-  --startup-file app.cjs \
-  --env-vars '{"SIWD_PUBLIC_ORIGIN":"https://dashlogin.ronhelwig.com",...}' \
-  --passenger-log-file /home/ronhcbvr/siwd-demo/apps/demo-web/passenger.log
+curl -sS https://dashlogin.ronhelwig.com/healthz
+curl -sS https://dashlogin.ronhelwig.com/dash-auth/v1/platform/health
+curl -sS \
+  'https://dashlogin.ronhelwig.com/dash-auth/v1/platform/resolve?name=ronhelwig4test'
 ```
 
 ## Caveats
 
-- Shared host **cannot compile** native addons (gcc group-restricted). Prefer
-  sql.js fallback (automatic) or ship a glibc-2.28-compatible better-sqlite3 binary.
 - Simulator must stay **off** on the public host.
-- TLS is the account wildcard (`*.ronhelwig.com`); renew via SiteSSL workflow.
+- Start with an empty `/var/lib/dashlogin/demo.sqlite`; do not upload local test DBs.
+- Hourly sqlite snapshots + claw pull are handled by VpsManage, not this repo.

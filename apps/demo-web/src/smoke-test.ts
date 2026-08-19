@@ -231,11 +231,21 @@ async function main() {
   if (!homeHtml.includes("Donate") && !homeHtml.includes("donate")) {
     throw new Error("home missing donate link");
   }
-  if (!homeHtml.includes("shared") && !homeHtml.includes("Shared")) {
-    // notice may be in footer
-    if (!homeHtml.includes("shared hosting") && !homeHtml.includes("Shared hosting")) {
-      throw new Error("home missing shared-host notice");
-    }
+  if (homeHtml.includes("shared hosting") || homeHtml.includes("Shared hosting")) {
+    throw new Error("home should not mention shared hosting by default");
+  }
+
+  const started = await fetch(`${BASE}/get-started`);
+  const startedHtml = await started.text();
+  const optA = startedHtml.indexOf("Option A");
+  const optB = startedHtml.indexOf("Option B");
+  const android = startedHtml.indexOf("Android authenticator");
+  const simulator = startedHtml.indexOf("Localhost with dev simulator");
+  if (optA < 0 || optB < 0 || android < 0 || simulator < 0) {
+    throw new Error("get-started missing Option A/B headings");
+  }
+  if (!(optA < android && android < optB && optB < simulator)) {
+    throw new Error("get-started should list Android as Option A and localhost simulator as Option B");
   }
 
   // 12. Finish without cookie should fail for new request

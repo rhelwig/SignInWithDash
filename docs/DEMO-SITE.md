@@ -37,7 +37,7 @@ cd apps/demo-web && npm test
 | `SIWD_SITE_OWNER_NAMES` | _(empty)_ | Comma-separated Dash names and/or identity IDs with owner powers. If empty, **every signed-in user** is treated as an owner (local bootstrap). Set this on a public host. |
 | `SIWD_DONATE_URL` | `https://myrpg.ronhelwig.com/donate` | Footer / home donate link |
 | `SIWD_REPO_URL` | GitHub SignInWithDash URL | Self-host link in notices and invite messages |
-| `SIWD_SHARED_HOST_NOTICE` | `true` | Show shared-host courtesy notice on public pages |
+| `SIWD_SHARED_HOST_NOTICE` | `false` | Optional shared-host courtesy notice on public pages |
 | `SIWD_CONTACT_TO` | _(empty)_ | Recipient for the signed-in contact form. Empty disables the form (no baked-in default). |
 | `SIWD_CONTACT_FROM` | _(empty)_ | Optional From address for outbound contact mail |
 | `SIWD_SMTP_HOST` | _(empty)_ | SMTP host. If empty while contact is enabled, messages are **logged** only |
@@ -68,9 +68,9 @@ and reverse-proxy TLS (or Passenger) to that port.
 
 | Path | Purpose |
 | --- | --- |
-| `/` | What SIWD is, quick try links, shared-host notice, donate |
+| `/` | What SIWD is, quick try links, donate |
 | `/how-it-works` | Protocol basics for non-specialists |
-| `/get-started` | Simulator fixtures + Android APK notes |
+| `/get-started` | Android authenticator first, then localhost simulator |
 | `/how-to-test` | Public testnet testing path, risks, APK/source |
 | `/privacy` | Short privacy notice (testnet demo, no keys) |
 | `/accounts` | List of accounts by Dash name (**signed-in only**); optional emails obfuscated |
@@ -99,8 +99,8 @@ and reverse-proxy TLS (or Passenger) to that port.
     matching accounts are banned and sessions revoked immediately.
   - Site owners configured via `SIWD_SITE_OWNER_NAMES` (always may create even
     when not on the allowlist).
-- **Shared-host courtesy** notice on home/get-started/footer when
-  `SIWD_SHARED_HOST_NOTICE` is true.
+- Optional **shared-host courtesy** notice on home/get-started/footer when
+  `SIWD_SHARED_HOST_NOTICE` is true (off by default).
 - **Donate** link to support hosting/dev time.
 - **Contact form** (signed-in only), optional per deployment:
   - Enabled only when `SIWD_CONTACT_TO` is set (self-hosters point it at their
@@ -111,17 +111,14 @@ and reverse-proxy TLS (or Passenger) to that port.
   - Contact form autofills a saved address when present.
   - SMTP via `SIWD_SMTP_*`; without SMTP host, submissions are logged for local demos.
 
-## Suggested live host (later)
+## Suggested live host
 
-When localhost is solid:
+Public demo is `dashlogin.ronhelwig.com` on the OVH VPS (systemd + Caddy).
+See [DEPLOY-DASHLOGIN.md](DEPLOY-DASHLOGIN.md).
 
-1. Create subdomain `dashlogin.ronhelwig.com` in cPanel (or similar).
-2. Issue TLS certificate for the subdomain.
-3. Run the Node app under a process manager (Passenger Node, systemd, pm2)
-   — this is **not** a static HTML site; the protocol needs a live server.
-4. Set `SIWD_PUBLIC_ORIGIN=https://dashlogin.ronhelwig.com`.
-5. Keep simulator **off** on the public host once a real testnet authenticator
-   is available; until then, label the site clearly as simulator-backed.
+1. Set `SIWD_PUBLIC_ORIGIN=https://dashlogin.ronhelwig.com`.
+2. Keep simulator **off** on the public host (`SIWD_VERIFY_MODE=platform`).
+3. Start with a fresh SQLite file; do not upload local test databases.
 
 Do not upload SQLite from local testing if it contains junk accounts you do not
 want public.

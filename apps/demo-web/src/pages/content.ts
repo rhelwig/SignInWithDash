@@ -190,40 +190,7 @@ export function getStartedPage(account: AccountRow | null) {
   }
 
   <div class="panel">
-    <h2>Option A — Localhost with dev simulator</h2>
-    ${
-      VERIFY_MODE === "platform" && !ENABLE_SIMULATOR
-        ? `<div class="warn-box"><strong>Not available on this public host.</strong>
-        This site runs in <span class="mono">platform</span> verify mode with the simulator off.
-        Fixture identities (alice/bob) and the <span class="mono">/dev/simulator</span> UI are for
-        local development only (<span class="mono">SIWD_VERIFY_MODE=hybrid</span> or
-        <span class="mono">simulator</span>, <span class="mono">SIWD_ENABLE_SIMULATOR=true</span>).
-        Use Option B with a real testnet DPNS name instead.</div>`
-        : `<ol>
-      <li>Open <a href="/login">Sign in with Dash</a> in one browser tab.</li>
-      <li>Open <a href="/dev/simulator">Dev simulator</a> in another tab (or on a second device on the same host).</li>
-      <li>Paste the capability URL from the QR (or open the QR link and copy it into the simulator).</li>
-      <li>Choose a fixture identity (e.g. <span class="mono">${esc(displayDashName("alice.dash"))}</span>) and approve.</li>
-      <li>The first tab finishes automatically and signs you in.</li>
-    </ol>
-    <p class="muted">${esc(simulatorTestKeyNote())}</p>
-    <p class="muted">Names are shown without the <span class="mono">.dash</span> parent label; the protocol still uses the full name.</p>
-    <table>
-      <thead><tr><th>Name</th><th>Identity ID</th><th>Key</th></tr></thead>
-      <tbody>
-        ${ids
-          .map(
-            (i) =>
-              `<tr><td class="mono">${esc(displayDashName(i.dpnsName))}</td><td class="mono">${esc(i.identityId)}</td><td class="mono">${i.keyId}</td></tr>`,
-          )
-          .join("")}
-      </tbody>
-    </table>`
-    }
-  </div>
-
-  <div class="panel">
-    <h2>Option B — Android authenticator (testnet, available now)</h2>
+    <h2>Option A — Android authenticator (testnet, available now)</h2>
     <p>This demo is aimed at <strong>Dash developers</strong> and others who may implement
     SIWD on their own sites, build their own authenticator, or integrate login capabilities
     into a wallet. There is a working <strong>standalone Android authenticator</strong>
@@ -259,6 +226,39 @@ export function getStartedPage(account: AccountRow | null) {
   </div>
 
   <div class="panel">
+    <h2>Option B — Localhost with dev simulator</h2>
+    ${
+      VERIFY_MODE === "platform" && !ENABLE_SIMULATOR
+        ? `<div class="warn-box"><strong>Not available on this public host.</strong>
+        This site runs in <span class="mono">platform</span> verify mode with the simulator off.
+        Fixture identities (alice/bob) and the <span class="mono">/dev/simulator</span> UI are for
+        local development only (<span class="mono">SIWD_VERIFY_MODE=hybrid</span> or
+        <span class="mono">simulator</span>, <span class="mono">SIWD_ENABLE_SIMULATOR=true</span>).
+        Use Option A with a real testnet DPNS name instead.</div>`
+        : `<ol>
+      <li>Open <a href="/login">Sign in with Dash</a> in one browser tab.</li>
+      <li>Open <a href="/dev/simulator">Dev simulator</a> in another tab (or on a second device on the same host).</li>
+      <li>Paste the capability URL from the QR (or open the QR link and copy it into the simulator).</li>
+      <li>Choose a fixture identity (e.g. <span class="mono">${esc(displayDashName("alice.dash"))}</span>) and approve.</li>
+      <li>The first tab finishes automatically and signs you in.</li>
+    </ol>
+    <p class="muted">${esc(simulatorTestKeyNote())}</p>
+    <p class="muted">Names are shown without the <span class="mono">.dash</span> parent label; the protocol still uses the full name.</p>
+    <table>
+      <thead><tr><th>Name</th><th>Identity ID</th><th>Key</th></tr></thead>
+      <tbody>
+        ${ids
+          .map(
+            (i) =>
+              `<tr><td class="mono">${esc(displayDashName(i.dpnsName))}</td><td class="mono">${esc(i.identityId)}</td><td class="mono">${i.keyId}</td></tr>`,
+          )
+          .join("")}
+      </tbody>
+    </table>`
+    }
+  </div>
+
+  <div class="panel">
     <h2>Invites &amp; access control</h2>
     <p>Site owners can restrict who may <em>create</em> accounts (allowlist), let existing users
     invite up to a fixed number of Dash names, and maintain ban lists. Signed-in users manage
@@ -269,7 +269,7 @@ export function getStartedPage(account: AccountRow | null) {
     <h2>Pen-testers</h2>
     <p>See <a href="/security">Security &amp; testing notes</a> for intentional residual risks,
     rate limits, and what is in-scope for the demo.</p>
-    <p class="muted">Please run aggressive scanners against your own deployment, not the shared public demo.</p>
+    <p class="muted">Please run aggressive scanners against your own deployment, not the public demo.</p>
   </div>
 
   <div class="panel">
@@ -326,7 +326,7 @@ export function howToTestPage(account: AccountRow | null) {
     <ul class="checklist">
       <li>QR forwarding: approving someone else’s login grants <em>their</em> browser the session.</li>
       <li>Phrase import on-device talks to testnet Platform; discovery can fail if the identity does not exist yet or DAPI is flaky — use the optional DPNS name assist.</li>
-      <li>This host is a small shared demo. Manual testing is welcome; do not load-test or script against it. Self-host from
+      <li>Manual testing is welcome. Please do not load-test or script against the public demo — self-host from
         <a href="${esc(REPO_URL)}">GitHub</a> for heavy work.</li>
       <li>See <a href="/security">Security</a> for pen-test ideas and residual risks.</li>
     </ul>

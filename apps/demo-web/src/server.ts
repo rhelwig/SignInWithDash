@@ -13,6 +13,7 @@ import {
   type BindingPolicy,
 } from "@siwd/protocol";
 import {
+  BIND_COOKIE_MAX_AGE,
   CONTACT_ENABLED,
   ENABLE_SIMULATOR,
   HOST,
@@ -496,7 +497,7 @@ async function startAuth(
     httpOnly: true,
     secure: cookieSecure(),
     sameSite: "Strict",
-    maxAge: 180,
+    maxAge: BIND_COOKIE_MAX_AGE,
   });
 
   // Also store requestId for cancel form convenience
@@ -505,7 +506,7 @@ async function startAuth(
     httpOnly: true,
     secure: cookieSecure(),
     sameSite: "Lax",
-    maxAge: 180,
+    maxAge: BIND_COOKIE_MAX_AGE,
   });
 
   return c.html(
@@ -539,11 +540,14 @@ app.get("/dash-auth/v1/r/:token", (c) => {
   }
   const token = c.req.param("token");
   const row = getRequestByCapabilityToken(token);
-  if (!row || row.status !== "pending") {
+  if (!row) {
     return jsonError("invalid_request", "Not found", 404);
   }
-  if (Date.parse(row.expires_at) <= Date.now()) {
-    return jsonError("expired", "Expired", 404);
+  if (row.status === "expired" || Date.parse(row.expires_at) <= Date.now()) {
+    return jsonError("expired", "This login request expired — start a new sign-in", 404);
+  }
+  if (row.status !== "pending") {
+    return jsonError("invalid_request", "Not found", 404);
   }
   return c.json(toPublicRequest(row), 200, {
     "Cache-Control": "no-store",

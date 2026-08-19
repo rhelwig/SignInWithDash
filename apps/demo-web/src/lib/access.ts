@@ -261,7 +261,7 @@ export function cannedInviteMessage(
     ``,
     `You'll need a Dash Platform testnet identity and to approve the Sign in with Dash request (QR or link) from a device you control.`,
     ``,
-    `Please go easy on this demo — it runs on shared hosting, and a heavier load can make it unusable for everyone. If you want to stress-test or explore freely, hosting your own copy is very welcome:`,
+    `If you want to stress-test or explore freely, hosting your own copy is very welcome:`,
     REPO_URL,
     ``,
     `Thanks for trying it out!`,
