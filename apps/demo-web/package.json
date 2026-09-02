@@ -5,13 +5,16 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts",
-    "test": "tsx src/smoke-test.ts",
-    "build": "tsc -p tsconfig.json --noEmit"
+    "dev": "node ../../scripts/check-node-version.mjs && tsx watch src/server.ts",
+    "start": "node ../../scripts/check-node-version.mjs && tsx src/server.ts",
+    "test": "node ../../scripts/check-node-version.mjs && tsx src/smoke-test.ts",
+    "build": "node ../../scripts/check-node-version.mjs && tsc -p tsconfig.json --noEmit"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.18.0 <25"
+  },
+  "devEngines": {
+    "runtime": { "name": "node", "version": ">=24.18.0 <25", "onFail": "error" }
   },
   "license": "MIT",
   "dependencies": {

@@ -18,10 +18,10 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "generate-vectors": "tsx src/generate-vectors.ts",
-    "verify-vectors": "tsx src/verify-vectors.ts",
-    "test": "tsx src/verify-vectors.ts"
+    "build": "node ../../scripts/check-node-version.mjs && tsc -p tsconfig.json",
+    "generate-vectors": "node ../../scripts/check-node-version.mjs && tsx src/generate-vectors.ts",
+    "verify-vectors": "node ../../scripts/check-node-version.mjs && tsx src/verify-vectors.ts",
+    "test": "node ../../scripts/check-node-version.mjs && tsx src/verify-vectors.ts"
   },
   "keywords": [
     "siwd",
@@ -40,6 +40,9 @@
     "typescript": "^5.8.3"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.18.0 <25"
+  },
+  "devEngines": {
+    "runtime": { "name": "node", "version": ">=24.18.0 <25", "onFail": "error" }
   }
 }
