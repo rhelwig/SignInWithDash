@@ -14,7 +14,11 @@
     "node": ">=24.18.0 <25"
   },
   "devEngines": {
-    "runtime": { "name": "node", "version": ">=24.18.0 <25", "onFail": "error" }
+    "runtime": {
+      "name": "node",
+      "version": ">=24.18.0 <25",
+      "onFail": "error"
+    }
   },
   "license": "MIT",
   "dependencies": {
@@ -23,7 +27,7 @@
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@siwd/protocol": "file:../../packages/protocol",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "13.0.3",
     "cookie": "^0.7.2",
     "dotenv": "^17.4.2",
     "hono": "^4.7.10",
