@@ -1,5 +1,7 @@
 package org.siwd.authenticator.security
 
+import android.os.Build
+import javax.crypto.Cipher
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators
 import androidx.biometric.BiometricPrompt
@@ -25,7 +27,8 @@ object DeviceGate {
         activity: FragmentActivity,
         title: String = "Confirm approval",
         subtitle: String = "Unlock to sign this Sign in with Dash request",
-        onSuccess: () -> Unit,
+        cipher: Cipher? = null,
+        onSuccess: (Cipher?) -> Unit,
         onError: (String) -> Unit,
     ) {
         val executor = ContextCompat.getMainExecutor(activity)
@@ -35,7 +38,9 @@ object DeviceGate {
                 executor,
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        onSuccess()
+                        val authenticated = result.cryptoObject?.cipher
+                        if (cipher != null && authenticated == null) onError("Cryptographic authentication failed")
+                        else onSuccess(authenticated)
                     }
 
                     override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
@@ -54,31 +59,17 @@ object DeviceGate {
                 },
             )
 
-        val info =
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(title)
-                .setSubtitle(subtitle)
-                // Biometric if available, otherwise device PIN/pattern/password
-                .setAllowedAuthenticators(
-                    Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL,
-                )
-                .build()
-
+        val builder = BiometricPrompt.PromptInfo.Builder().setTitle(title).setSubtitle(subtitle)
+        if (Build.VERSION.SDK_INT >= 30 || cipher == null) {
+            builder.setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG or Authenticators.DEVICE_CREDENTIAL)
+        } else {
+            builder.setAllowedAuthenticators(Authenticators.BIOMETRIC_STRONG).setNegativeButtonText("Cancel")
+        }
         try {
-            prompt.authenticate(info)
+            if (cipher != null) prompt.authenticate(builder.build(), BiometricPrompt.CryptoObject(cipher))
+            else prompt.authenticate(builder.build())
         } catch (e: Exception) {
-            // Fallback: if authenticator combination fails on old devices, try device credential only
-            try {
-                val fallback =
-                    BiometricPrompt.PromptInfo.Builder()
-                        .setTitle(title)
-                        .setSubtitle(subtitle)
-                        .setAllowedAuthenticators(Authenticators.DEVICE_CREDENTIAL)
-                        .build()
-                prompt.authenticate(fallback)
-            } catch (e2: Exception) {
-                onError(e2.message ?: e.message ?: "Device authentication unavailable")
-            }
+            onError("Secure device authentication unavailable. ${e.message.orEmpty()}")
         }
     }
 }

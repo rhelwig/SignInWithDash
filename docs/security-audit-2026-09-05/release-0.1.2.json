@@ -1,0 +1,30 @@
+{
+  "certificateSha256": "19a62f569775391f754582bfe643297f8099ffaaf1796295b66e190c72af66f7",
+  "artifacts": [
+    {
+      "network": "testnet",
+      "versionCode": 5,
+      "versionName": "0.1.2-testnet",
+      "path": "apps/android-authenticator/app/build/outputs/signed/siwd-authenticator-testnet-release.apk",
+      "sha256": "6ca6ad5c555d6687804c19ed1db6453a9bd9216be077aef7f2c5c4deff7056c3",
+      "bytes": 90906817
+    },
+    {
+      "network": "mainnet",
+      "versionCode": 5,
+      "versionName": "0.1.2-mainnet-private",
+      "path": "apps/android-authenticator/app/build/outputs/signed/siwd-authenticator-mainnet-release.apk",
+      "sha256": "0f39247849e7515e07379bd5fb2c59509c8c5adf733cac19777fce4ec65044b9",
+      "bytes": 90656961
+    }
+  ],
+  "protocolTests": 14,
+  "phoneSyntheticRecoveryTests": 6,
+  "operatorAcceptance": "passed; operator confirmed testing successful on 2026-09-05",
+  "installedOnPhone": true,
+  "installedDataPreserved": true,
+  "verifiedAppLinks": {
+    "testnet": "dashlogin.ronhelwig.com",
+    "mainnet": "latitude.ronhelwig.com"
+  }
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "org.siwd.authenticator.testnet",
+      "sha256_cert_fingerprints": [
+        "19:A6:2F:56:97:75:39:1F:75:45:82:BF:E6:43:29:7F:80:99:FF:AA:F1:79:62:95:B6:6E:19:0C:72:AF:66:F7"
+      ]
+    }
+  }
+]

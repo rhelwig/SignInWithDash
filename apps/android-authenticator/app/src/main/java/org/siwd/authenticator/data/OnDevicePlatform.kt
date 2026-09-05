@@ -1,6 +1,7 @@
 package org.siwd.authenticator.data
 
 import android.util.Log
+import org.bitcoinj.params.MainNetParams
 import org.bitcoinj.params.TestNet3Params
 import org.dashj.platform.dapiclient.provider.DAPIAddress
 import org.dashj.platform.dapiclient.provider.ListDAPIAddressProvider
@@ -15,7 +16,7 @@ import java.lang.reflect.Field
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * On-device Dash Platform access for SIWD (testnet).
+ * On-device Dash Platform access for SIWD (testnet or mainnet, per flavor).
  *
  * Phone ↔ Platform DAPI only — **no** website proxy.
  *
@@ -41,15 +42,19 @@ object OnDevicePlatform {
     private val platformRef = AtomicReference<Platform?>(null)
     private val initError = AtomicReference<String?>(null)
 
-    fun testnet(): Platform {
+    fun platform(): Platform {
         platformRef.get()?.let { return it }
         synchronized(this) {
             platformRef.get()?.let { return it }
             try {
-                Log.i(TAG, "Initializing on-device Platform (testnet DAPI + trusted quorums)")
+                Log.i(
+                    TAG,
+                    "Initializing on-device Platform (${NetworkConfig.networkLabel} DAPI + trusted quorums)",
+                )
                 TrustedQuorumContext.ensureFresh()
 
-                val params = TestNet3Params.get()
+                val params =
+                    if (NetworkConfig.isMainnet) MainNetParams.get() else TestNet3Params.get()
                 Log.i(TAG, "Constructing Platform (native dash-sdk)…")
                 val p = Platform(params)
                 Log.i(TAG, "Platform constructed; installing trusted ContextProvider (rebind, no recreate)")
@@ -189,7 +194,7 @@ object OnDevicePlatform {
             if (!includePlatform) {
                 return "ok: $q (platform not started)"
             }
-            val p = testnet()
+            val p = platform()
             val report = p.client.reportNetworkStatus()
             "ok: $q; $report"
         } catch (e: Exception) {
@@ -198,7 +203,7 @@ object OnDevicePlatform {
     }
 
     fun getIdentityByPublicKeyHash(pubKeyHash: ByteArray): Identity? {
-        val p = testnet()
+        val p = platform()
         return try {
             // prefer non-proof path when available, then fall back
             p.client.getIdentityByFirstPublicKey(pubKeyHash, false)
@@ -220,7 +225,7 @@ object OnDevicePlatform {
 
     fun getIdentity(idBase58: String): Identity? {
         return try {
-            testnet().identities.get(idBase58)
+            platform().identities.get(idBase58)
         } catch (e: Exception) {
             Log.w(TAG, "get identity failed: ${e.message}", e)
             throw e
@@ -229,7 +234,22 @@ object OnDevicePlatform {
 
     fun usernamesForIdentity(identityIdBase58: String): List<String> {
         return try {
-            val docs = testnet().names.getByOwnerId(identityIdBase58)
+            val p = platform()
+            val id = org.dashj.platform.dpp.identifier.Identifier.from(identityIdBase58)
+            val docs = mutableListOf<org.dashj.platform.dpp.document.Document>()
+            var cursor: org.dashj.platform.dpp.identifier.Identifier? = null
+            // Match the SDK's records.identity query, with explicit pagination.
+            // Never silently present a truncated name list as a complete import.
+            while (true) {
+                val query = org.dashj.platform.dapiclient.model.DocumentQuery.Builder()
+                    .where("records.identity", "==", id).limit(100)
+                cursor?.let { query.startAfter(it) }
+                val page = p.documents.get("dpns.domain", query.build())
+                docs.addAll(page)
+                if (page.size < 100) break
+                check(docs.size < 10000 && page.last().id != cursor) { "Name lookup exceeded its safe pagination limit" }
+                cursor = page.last().id
+            }
             docs.mapNotNull { doc ->
                 val label =
                     (doc.data["label"] as? String)
@@ -243,15 +263,15 @@ object OnDevicePlatform {
                 if (full.endsWith(".dash")) full else "$full.dash"
             }.distinct()
         } catch (e: Exception) {
-            Log.w(TAG, "usernamesForIdentity failed: ${e.message}", e)
-            emptyList()
+            Log.w(TAG, "Name lookup failed: ${e.javaClass.simpleName}")
+            throw IllegalStateException("Could not load the identity's names. Check the connection and retry.", e)
         }
     }
 
     fun resolveName(name: String): String? {
         return try {
             val label = name.replace(Regex("\\.dash$", RegexOption.IGNORE_CASE), "")
-            val doc = testnet().names.resolve(label) ?: return null
+            val doc = platform().names.resolve(label) ?: return null
             val records = doc.data["records"] as? Map<*, *> ?: return null
             val id = records["identity"] ?: records["dashUniqueIdentityId"]
             when (id) {
@@ -269,14 +289,10 @@ object OnDevicePlatform {
     }
 
     fun isEligibleSiwdKey(key: IdentityPublicKey): Boolean {
-        if (key.disabledAt != null) return false
-        val purposeOk =
-            key.purpose == Purpose.AUTHENTICATION ||
-                key.purpose.name.contains("AUTH", ignoreCase = true)
-        val levelOk =
-            key.securityLevel == SecurityLevel.HIGH ||
-                key.securityLevel.name.contains("HIGH", ignoreCase = true)
-        return purposeOk && levelOk
+        return key.disabledAt == null && key.contractBounds == null &&
+            key.type == org.dashj.platform.sdk.KeyType.ECDSA_SECP256K1 &&
+            key.purpose == Purpose.AUTHENTICATION && key.securityLevel == SecurityLevel.HIGH &&
+            key.data.size == 33 && (key.data[0] == 2.toByte() || key.data[0] == 3.toByte())
     }
 
     fun publicKeyHex(key: IdentityPublicKey): String = bytesToHex(key.data)

@@ -43,10 +43,10 @@ object Bip39 {
 
     fun mnemonicToSeed(phrase: String, passphrase: String = ""): ByteArray {
         val normalized = normalizeMnemonic(phrase)
-        val salt = "mnemonic$passphrase"
+        val salt = "mnemonic" + Normalizer.normalize(passphrase, Normalizer.Form.NFKD)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA512")
         val spec = PBEKeySpec(normalized.toCharArray(), salt.toByteArray(Charsets.UTF_8), 2048, 512)
-        return factory.generateSecret(spec).encoded
+        return try { factory.generateSecret(spec).encoded } finally { spec.clearPassword() }
     }
 
     private fun bitsToBytes(bits: String): ByteArray {

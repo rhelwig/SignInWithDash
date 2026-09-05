@@ -1,0 +1,74 @@
+dashlogin health 200 {
+  ok: true,
+  network: 'testnet',
+  origin: 'https://dashlogin.ronhelwig.com',
+  verifyMode: 'platform',
+  accounts: 1,
+  platformBridge: false
+}
+dashlogin ceremony 200 seconds 0.06 {
+  'cache-control': 'no-store',
+  'referrer-policy': 'no-referrer',
+  'strict-transport-security': 'max-age=31536000',
+  'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff'
+}
+dashlogin cookie attributes [
+  'Max-Age=180; Path=/dash-auth/v1; HttpOnly; Secure; SameSite=Strict',
+  'Max-Age=180; Path=/; HttpOnly; Secure; SameSite=Lax',
+  'Path=/; HttpOnly; Secure; SameSite=Strict'
+]
+dashlogin request 200 {
+  'cache-control': 'no-store',
+  'referrer-policy': 'no-referrer',
+  'strict-transport-security': 'max-age=31536000',
+  'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff'
+} {
+  network: 'testnet',
+  origin: 'https://dashlogin.ronhelwig.com',
+  domain: 'dashlogin.ronhelwig.com',
+  action: 'login',
+  ttlSeconds: 120
+}
+dashlogin status without/with binding 401 200 pending
+dashlogin unapproved finish 409
+dashlogin simulator 404
+dashlogin live DPNS lookup 200 { network: 'testnet', resolved: true }
+latitude health 200 {
+  ok: true,
+  instance: 'latitude.ronhelwig.com',
+  origin: 'https://latitude.ronhelwig.com',
+  siwdNetwork: 'mainnet',
+  bootstrapped: true
+}
+latitude ceremony 200 seconds 1.24 {
+  'cache-control': 'no-store',
+  'referrer-policy': 'no-referrer',
+  'strict-transport-security': 'max-age=31536000; includeSubDomains',
+  'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff'
+}
+latitude cookie attributes [
+  'Path=/; HttpOnly; SameSite=Strict; Max-Age=180; Secure',
+  'Path=/; HttpOnly; SameSite=Strict; Secure'
+]
+latitude request 200 {
+  'cache-control': 'no-store',
+  'referrer-policy': 'no-referrer',
+  'strict-transport-security': 'max-age=31536000; includeSubDomains',
+  'content-security-policy': "frame-ancestors 'none'; object-src 'none'; base-uri 'self'",
+  'x-frame-options': 'DENY',
+  'x-content-type-options': 'nosniff'
+} {
+  network: 'mainnet',
+  origin: 'https://latitude.ronhelwig.com',
+  domain: 'latitude.ronhelwig.com',
+  action: 'login',
+  ttlSeconds: 180
+}
+latitude status without/with binding 401 200 pending
+latitude unapproved finish 409

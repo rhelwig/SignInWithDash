@@ -6,27 +6,10 @@
  *   node platform-worker.mjs discover <hash1,hash2,...>
  *   node platform-worker.mjs identity <identityId>
  */
+import { normalizePlatformKey } from "./platform-key.mjs";
 import { EvoSDK } from "@dashevo/evo-sdk";
 
 const [cmd, arg] = process.argv.slice(2);
-
-/** Purpose enum → SIWD string (Platform DPP IdentityPublicKeyPurpose). */
-const PURPOSE = {
-  0: "AUTHENTICATION",
-  1: "ENCRYPTION",
-  2: "DECRYPTION",
-  3: "TRANSFER",
-  4: "SYSTEM",
-  5: "VOTING",
-};
-
-/** SecurityLevel enum → SIWD string. */
-const SECURITY_LEVEL = {
-  0: "MASTER",
-  1: "CRITICAL",
-  2: "HIGH",
-  3: "MEDIUM",
-};
 
 /**
  * Normalize WASM Identity / Identifier / plain object into a base58 identity id string.
@@ -59,43 +42,6 @@ function identityIdOf(value) {
     }
   }
   return null;
-}
-
-/**
- * Decode public key material to hex. Platform JSON often uses base64 for `data`.
- */
-function publicKeyToHex(data) {
-  if (data == null) return undefined;
-  if (data instanceof Uint8Array) return Buffer.from(data).toString("hex");
-  if (typeof data !== "string") return undefined;
-  const s = data.replace(/^0x/, "").trim();
-  if (!s) return undefined;
-  // Hex (compressed secp256k1 pubkeys are 33 bytes → 66 hex chars)
-  if (/^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0) {
-    return s.toLowerCase();
-  }
-  // Base64
-  try {
-    return Buffer.from(s, "base64").toString("hex");
-  } catch {
-    return undefined;
-  }
-}
-
-function mapPurpose(v) {
-  if (v == null || v === "") return "AUTHENTICATION";
-  if (typeof v === "number") return PURPOSE[v] ?? String(v);
-  const s = String(v);
-  if (/^\d+$/.test(s)) return PURPOSE[Number(s)] ?? s;
-  return s.toUpperCase();
-}
-
-function mapSecurityLevel(v) {
-  if (v == null || v === "") return "HIGH";
-  if (typeof v === "number") return SECURITY_LEVEL[v] ?? String(v);
-  const s = String(v);
-  if (/^\d+$/.test(s)) return SECURITY_LEVEL[Number(s)] ?? s;
-  return s.toUpperCase();
 }
 
 /**
@@ -197,17 +143,7 @@ async function summarize(sdk, identityId) {
       ? Object.values(keysRaw)
       : [];
 
-  const keys = list.map((rec) => {
-    const r = rec || {};
-    const publicKeyHex = publicKeyToHex(r.data ?? r.publicKey ?? r.key);
-    return {
-      id: Number(r.id ?? r.keyId ?? 0),
-      purpose: mapPurpose(r.purpose ?? r.keyPurpose),
-      securityLevel: mapSecurityLevel(r.securityLevel ?? r.level),
-      disabled: Boolean(r.disabled ?? r.disabledAt ?? false),
-      publicKeyHex,
-    };
-  });
+  const keys = list.map(normalizePlatformKey);
 
   let usernames = [];
   try {
@@ -221,7 +157,7 @@ async function summarize(sdk, identityId) {
       /* optional */
     }
   }
-  return { identityId: idStr, keys, usernames };
+  return { identityId: idStr, keys, usernames, network: "testnet" };
 }
 
 main().catch((e) => {

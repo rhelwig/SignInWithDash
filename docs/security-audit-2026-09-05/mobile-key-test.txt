@@ -1,0 +1,15 @@
+2026-09-05 07:53 EDT — attached physical phone
+Isolated package: org.siwd.authenticator.testnet.securityaudit
+Test data: generated synthetic key; no real Dash identity or transaction
+App process restarted before this test, preserving its synthetic wrapped key.
+
+07:53:14 PASS metadata survives storage without decryption
+07:53:14 PASS unauthenticated private-key decryption blocked
+07:53:19 PASS authenticated decryption returns the correct synthetic key
+07:53:19 PASS a second decryption requires fresh authentication
+07:53:19 PASS secure key storage test complete
+
+The operator approved the OS authentication prompt. The test does not record
+which authentication method was used and does not establish separate coverage
+of PIN and biometric authentication. Full release-app login, legacy migration,
+key invalidation and older Android versions remain outside this test.

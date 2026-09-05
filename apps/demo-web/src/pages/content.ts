@@ -201,7 +201,7 @@ export function getStartedPage(account: AccountRow | null) {
         <span class="mono">apps/android-authenticator</span> in
         <a href="${esc(REPO_URL)}">${esc(REPO_URL)}</a>.</li>
       <li>A prebuilt <strong>debug APK</strong> is published for convenience while iterating:
-        <a href="/downloads/siwd-authenticator-testnet-debug.apk">Download SIWD Android authenticator (testnet debug APK)</a>.
+        <a href="/downloads/siwd-authenticator-testnet-release.apk">Download SIWD Android authenticator (testnet signed release APK)</a>.
         Treat it as a developer sample — verify the build from source for any serious use.</li>
       <li><strong>Real testnet DPNS required on this public site.</strong> You need a Dash Platform
         <em>testnet</em> identity whose finalized DPNS name you control (e.g. from testnet DashPay),
@@ -334,7 +334,7 @@ export function howToTestPage(account: AccountRow | null) {
 
   <div class="panel">
     <h2>APK &amp; source</h2>
-    <p><a href="/downloads/siwd-authenticator-testnet-debug.apk">Download testnet debug APK</a>
+    <p><a href="/downloads/siwd-authenticator-testnet-release.apk">Download testnet signed release APK</a>
       · <a href="${esc(REPO_URL)}/tree/main/apps/android-authenticator">Authenticator source</a>
       · <a href="/get-started">Full get-started notes</a></p>
   </div>

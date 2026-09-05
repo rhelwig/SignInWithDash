@@ -70,8 +70,17 @@ async function main() {
     return [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
   }
 
+  async function request(url: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    if (init.method && init.method !== "GET") {
+      headers.set("Origin", new URL(BASE).origin);
+      headers.set("X-CSRF-Token", jar.get("siwd_csrf") || jar.get("__Host-siwd_csrf") || "");
+    }
+    return fetch(url, { ...init, headers });
+  }
+
   // 1. Start login ceremony (first success auto-creates the site account)
-  const reg = await fetch(`${BASE}/login`, {
+  const reg = await request(`${BASE}/login`, {
     redirect: "manual",
     headers: { cookie: cookieHeader() },
   });
@@ -85,7 +94,7 @@ async function main() {
   console.log("requestId", requestId);
 
   // 2. Fetch request
-  const fr = await fetch(capUrl);
+  const fr = await request(capUrl);
   if (!fr.ok) throw new Error("fetch request failed " + fr.status);
   const req = await fr.json();
   console.log("fetched action", req.action, "domain", req.domain);
@@ -110,7 +119,7 @@ async function main() {
     signer.privateKey,
   );
 
-  const respond = await fetch(`${BASE}/dash-auth/v1/respond`, {
+  const respond = await request(`${BASE}/dash-auth/v1/respond`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -133,7 +142,7 @@ async function main() {
   console.log("respond", respondBody);
 
   // 4. Status with binding cookie
-  const st = await fetch(
+  const st = await request(
     `${BASE}/dash-auth/v1/status?requestId=${encodeURIComponent(requestId)}`,
     { headers: { cookie: cookieHeader() } },
   );
@@ -143,7 +152,7 @@ async function main() {
   }
 
   // 5. Finish
-  const fin = await fetch(`${BASE}/dash-auth/v1/finish`, {
+  const fin = await request(`${BASE}/dash-auth/v1/finish`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -157,7 +166,7 @@ async function main() {
   console.log("finish", finBody);
 
   // 6. Me page (display name without .dash; full name still on profile)
-  const me = await fetch(`${BASE}/me`, {
+  const me = await request(`${BASE}/me`, {
     headers: { cookie: cookieHeader() },
   });
   const meHtml = await me.text();
@@ -166,7 +175,7 @@ async function main() {
   }
 
   // 7. Accounts list requires session
-  const accAnon = await fetch(`${BASE}/accounts`, { redirect: "manual" });
+  const accAnon = await request(`${BASE}/accounts`, { redirect: "manual" });
   if (accAnon.status !== 302 && accAnon.status !== 301) {
     // hono redirect may be 302
     const loc = accAnon.headers.get("location") || "";
@@ -175,7 +184,7 @@ async function main() {
     }
   }
 
-  const acc = await fetch(`${BASE}/accounts`, {
+  const acc = await request(`${BASE}/accounts`, {
     headers: { cookie: cookieHeader() },
   });
   const accHtml = await acc.text();
@@ -184,7 +193,7 @@ async function main() {
   }
 
   // 8. Access page (signed-in)
-  const access = await fetch(`${BASE}/access`, {
+  const access = await request(`${BASE}/access`, {
     headers: { cookie: cookieHeader() },
   });
   const accessHtml = await access.text();
@@ -193,7 +202,7 @@ async function main() {
   }
 
   // 9. Invite bob
-  const inv = await fetch(`${BASE}/access/invite`, {
+  const inv = await request(`${BASE}/access/invite`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -212,7 +221,7 @@ async function main() {
   }
 
   // 10. Enable allowlist as owner (smoke: no SIWD_SITE_OWNER_NAMES → all owners)
-  const set = await fetch(`${BASE}/access/settings`, {
+  const set = await request(`${BASE}/access/settings`, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -226,7 +235,7 @@ async function main() {
   }
 
   // 11. Ban identity should reject later; first confirm home mentions allowlist
-  const home = await fetch(`${BASE}/`);
+  const home = await request(`${BASE}/`);
   const homeHtml = await home.text();
   if (!homeHtml.includes("Donate") && !homeHtml.includes("donate")) {
     throw new Error("home missing donate link");
@@ -235,7 +244,7 @@ async function main() {
     throw new Error("home should not mention shared hosting by default");
   }
 
-  const started = await fetch(`${BASE}/get-started`);
+  const started = await request(`${BASE}/get-started`);
   const startedHtml = await started.text();
   const optA = startedHtml.indexOf("Option A");
   const optB = startedHtml.indexOf("Option B");
@@ -249,12 +258,12 @@ async function main() {
   }
 
   // 12. Finish without cookie should fail for new request
-  const reg2 = await fetch(`${BASE}/login`, { redirect: "manual" });
+  const reg2 = await request(`${BASE}/login`, { redirect: "manual" });
   // no store cookies on purpose for finish of first... already consumed.
   void reg2;
 
   // 13. Contact form: anonymous redirected; signed-in can submit + save email
-  const contactAnon = await fetch(`${BASE}/contact`, { redirect: "manual" });
+  const contactAnon = await request(`${BASE}/contact`, { redirect: "manual" });
   const contactAnonLoc = contactAnon.headers.get("location") || "";
   if (
     contactAnon.status !== 302 &&
@@ -272,7 +281,7 @@ async function main() {
     }
   }
 
-  const contactGet = await fetch(`${BASE}/contact`, {
+  const contactGet = await request(`${BASE}/contact`, {
     headers: { cookie: cookieHeader() },
   });
   const contactGetHtml = await contactGet.text();
@@ -286,7 +295,7 @@ async function main() {
       // Prefill should be empty when account has no saved email
     }
     // Before save, accounts list should say no email associated
-    const accBefore = await fetch(`${BASE}/accounts`, {
+    const accBefore = await request(`${BASE}/accounts`, {
       headers: { cookie: cookieHeader() },
     });
     const accBeforeHtml = await accBefore.text();
@@ -294,7 +303,7 @@ async function main() {
       throw new Error("accounts list should say no email associated initially");
     }
 
-    const contactPost = await fetch(`${BASE}/contact`, {
+    const contactPost = await request(`${BASE}/contact`, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -311,14 +320,14 @@ async function main() {
     }
     console.log("contact submit ok");
     // Autofill + accounts list obfuscation
-    const contactAgain = await fetch(`${BASE}/contact`, {
+    const contactAgain = await request(`${BASE}/contact`, {
       headers: { cookie: cookieHeader() },
     });
     const contactAgainHtml = await contactAgain.text();
     if (!contactAgainHtml.includes("alice-tester@example.test")) {
       throw new Error("contact form should autofill saved email");
     }
-    const acc2 = await fetch(`${BASE}/accounts`, {
+    const acc2 = await request(`${BASE}/accounts`, {
       headers: { cookie: cookieHeader() },
     });
     const acc2Html = await acc2.text();

@@ -1,11 +1,21 @@
-# SIWD Android authenticator (standalone, testnet)
+# SIWD Android authenticator (standalone)
 
 Standalone **Sign in with Dash** phone app for approving website logins.
 Designed as a **login authenticator**, not a payment wallet (D-014).
 
+Two product flavors, **separate application ids** (can be installed side by side):
+
+| Flavor | Application id | Network | Icon |
+| --- | --- | --- | --- |
+| `dashTestnet` | `org.siwd.authenticator.testnet` | Dash Platform testnet | Orange |
+| `dashMainnet` | `org.siwd.authenticator` | Dash Platform mainnet | Blue |
+
+Mainnet is a **private experimental** build for the owner's devices only. It is
+not a public release and does not satisfy the mainnet security gates in
+`docs/SECURITY.md`.
+
 | Item | Choice |
 | --- | --- |
-| Network | **Testnet only** in this build |
 | UI | Kotlin + Jetpack Compose |
 | Protocol core | `:protocol` JVM module (shared encoder/signer) |
 | Play services | **Not required** (CameraX + ZXing; GrapheneOS / F-Droid friendly path) |
@@ -41,22 +51,55 @@ cd apps/android-authenticator
 ./gradlew :protocol:test
 ```
 
-### Debug APK
+### Signed releases
+
+Current builds: **0.1.2-testnet** and **0.1.2-mainnet-private**, both version
+code **5**. Installed as in-place updates on the operator's phone. The operator
+confirmed successful testing of both networks and the logout fixes on
+2026-09-05. Mainnet distribution remains private.
 
 ```bash
-./gradlew :app:assembleDebug
-# APK: app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+./gradlew :protocol:test :app:assembleDashTestnetRelease :app:assembleDashMainnetRelease
+../../tools/sign-authenticator-release.sh
 ```
 
-Sideload over USB or copy the APK to any compatible device/emulator.
+The signing script stores the persistent release key outside the repository,
+in `~/Projects/.secrets/siwd-release/`, and writes signed APKs under
+`app/build/outputs/signed/`. Back up that signing directory securely: future
+updates must use the same key. Do not include it in source control or uploads.
+The website App Links fingerprints must match this release certificate.
 
-Optional copy for a running demo-web downloads page (gitignored `*.apk`):
+Publish only the signed testnet release to the demo download directory with
+file mode 0644. Mainnet release distribution remains private. Debug builds
+are for generated test identities only and have separate application IDs.
+A release installation cannot read identities stored in the debug sandbox.
 
-```bash
-cp app/build/outputs/apk/debug/app-debug.apk \
-  ../../demo-web/src/public/downloads/siwd-authenticator-testnet-debug.apk
-```
+Private-key decryption now requires an OS-authenticated cryptographic
+operation. Android 11+ supports strong biometrics or device credentials;
+older supported versions require strong biometrics. Disabling device security
+or invalidating the wrapping key may require reimport from your own backup.
+Screenshots and ordinary screen capture are blocked. Release builds exclude
+the debug self-test activity.
+
+An isolated synthetic test passed on the attached phone on 2026-09-05:
+wrapped-key persistence across process restart, rejection before OS approval,
+correct decryption after approval, and a fresh-approval requirement for the
+next decryption. The operator also confirmed the release-app recovery/login tests on both
+networks. Separate biometric and PIN coverage, legacy migration and key
+invalidation still need dedicated tests.
+
+A Dash name is an optional shortcut to compare derived keys
+locally across identity positions 0–19 and key positions 0–31. Platform key IDs
+are matched by their public keys rather than assumed to be derivation indexes.
+Only active, unbounded AUTHENTICATION/HIGH ECDSA keys can be imported. A
+successful name lookup with no matching key is reported separately. The
+BIP-39 passphrase field means the original optional seed passphrase, not the
+wallet's unlock PIN/password; leave it empty if no seed passphrase was used.
+
+Version 0.1.2 adds app-owned recovery-word entry with local BIP-39 suggestions,
+progressive name-free discovery and preservation of found identities when
+further scanning fails or reaches its time limit. See
+[the security fix report](../../docs/SECURITY-FIXES-2026-09-05.md).
 
 ## Dev flow with the demo website
 
@@ -90,7 +133,7 @@ own only for temporary debug if needed.
    (`quorums.testnet.networks.dash.org`). Optional DPNS name assist.
    **Note:** native `Platform()` / dash-sdk init can still abort on some
    devices; discovery reliability is an ongoing work item.
-4. **Device unlock on approve** — biometrics if enrolled, else PIN/pattern.
+4. **Device unlock on approve** — authenticated key decryption, using strong biometrics or (Android 11+) device credentials.
 5. **Per-site last Dash name** — `SiteNamePrefs`.
 6. **Known sites** — reopen a site origin after a successful approve.
 7. **Dev fixtures** (alice/bob) for offline pairing with the demo simulator.

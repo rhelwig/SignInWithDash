@@ -10,6 +10,8 @@ import {
 import type { RequestStatus } from "./db.js";
 import { getDb } from "./db.js";
 import {
+  SESSION_ABSOLUTE_SECONDS,
+  SESSION_IDLE_SECONDS,
   BIND_COOKIE_MAX_AGE,
   FINISH_GRACE_SECONDS,
   NETWORK,
@@ -84,7 +86,7 @@ export interface SessionRow {
 }
 
 function nowIso(): string {
-  return new Date().toISOString();
+  return new Date(Date.now()).toISOString();
 }
 
 function expireIfNeeded(row: AuthRequestRow): AuthRequestRow {
@@ -229,6 +231,11 @@ export async function respondToRequest(body: {
   algorithm: string;
   signature: string;
 }): Promise<RespondResult> {
+  if (!body || !/^[A-Za-z0-9_-]{16,64}$/.test(body.requestId) || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(body.identityId) ||
+      !/^[a-z0-9][a-z0-9-]{0,62}\.dash$/.test(body.dpnsName) || !Number.isInteger(body.keyId) || body.keyId < 0 || body.keyId > 0xffffffff ||
+      !/^[A-Za-z0-9_-]{87}$/.test(body.signature)) {
+    return { ok: false, code: "invalid_request", http: 400, message: "Invalid response fields" };
+  }
   const row = getRequestById(body.requestId);
   if (!row) {
     return {
@@ -458,7 +465,7 @@ export async function respondToRequest(body: {
         key_id = ?,
         finish_grant_hash = ?,
         finish_expires_at = ?
-      WHERE request_id = ? AND status = 'pending'`,
+      WHERE request_id = ? AND status = 'pending' AND expires_at > ?`,
     )
     .run(
       body.identityId,
@@ -467,6 +474,7 @@ export async function respondToRequest(body: {
       sha256Hex(finishGrant),
       finishExpires,
       row.request_id,
+      nowIso(),
     );
 
   if (updated.changes !== 1) {
@@ -680,7 +688,7 @@ export function finishRequest(
     d.prepare(
       `INSERT INTO sessions (id, account_id, created_at, last_seen_at, user_agent)
        VALUES (?, ?, ?, ?, ?)`,
-    ).run(sessionId, account.id, ts, ts, userAgent ?? null);
+    ).run(sha256Hex(sessionId), account.id, ts, ts, userAgent ?? null);
 
     return { sessionId, account, isNew };
   });
@@ -710,9 +718,10 @@ export function getSession(
               a.email as a_email
        FROM sessions s
        JOIN accounts a ON a.id = s.account_id
-       WHERE s.id = ? AND s.revoked_at IS NULL AND a.status = 'active'`,
+       WHERE s.id = ? AND s.revoked_at IS NULL AND a.status = 'active'
+         AND s.created_at > ? AND s.last_seen_at > ?`,
     )
-    .get(sessionId) as
+    .get(sha256Hex(sessionId), new Date(Date.now() - SESSION_ABSOLUTE_SECONDS * 1000).toISOString(), new Date(Date.now() - SESSION_IDLE_SECONDS * 1000).toISOString()) as
     | (SessionRow & {
         a_id: number;
         identity_id: string;
@@ -727,7 +736,7 @@ export function getSession(
   if (!row) return null;
   getDb()
     .prepare(`UPDATE sessions SET last_seen_at = ? WHERE id = ?`)
-    .run(nowIso(), sessionId);
+    .run(nowIso(), row.id);
   return {
     id: row.id,
     account_id: row.account_id,
@@ -879,3 +888,13 @@ export function sessionCookieOptions(secure: boolean) {
 }
 
 export { PUBLIC_ORIGIN };
+
+let lastPurge = 0;
+export function purgeAuthState(): void {
+  if (Date.now() - lastPurge < 60000) return;
+  lastPurge = Date.now();
+  const d = getDb();
+  d.prepare("DELETE FROM auth_requests WHERE expires_at < ?").run(new Date(Date.now() - 86400000).toISOString());
+  d.prepare("DELETE FROM rate_buckets WHERE window_start < ?").run(Date.now() - 3600000);
+  d.prepare("DELETE FROM sessions WHERE created_at < ?").run(new Date(Date.now() - 30 * 86400000).toISOString());
+}

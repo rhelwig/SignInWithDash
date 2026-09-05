@@ -1,0 +1,32 @@
+2026-09-05 final validation
+
+Protocol: 14 passed; 0 failures, errors or skips.
+Both release variants and the isolated testnet diagnostic variant build.
+Release APKs: versionCode 5, same release certificate, non-debuggable,
+no diagnostic activities or fixture service packaged.
+
+Pixel 4a (5G), isolated testnet audit app, 10:00 EDT:
+PASS optional passphrase stays private input even when revealed
+PASS name-free IPC returns two identities, multiple names, and incremental progress
+PASS finish with found identities returns partial results promptly
+PASS a later network failure preserves already discovered identities
+PASS overall time limit stops network work without discarding found identities
+PASS cancel releases the service and a fresh discovery succeeds
+
+Public testnet metadata probe (no mnemonic/private key):
+PASS name resolution, paginated name query, identity fetch, and master/HIGH
+public-key-hash lookup for the public testnet account.
+
+Web: demo build and security suite passed; Campaign typecheck and 224 tests passed.
+Chromium and Firefox 153 isolated browser regressions passed:
+- sibling-origin logout cannot revoke an authenticated session;
+- authorized form logout revokes session, clears cookie, and redirects home;
+- both integrations accept null Origin + same-origin Fetch Metadata + valid token;
+- both reject missing/bad tokens and same-site/cross-site/null-origin metadata.
+
+Deployed anonymous checks: both sites returned 303 / for the legitimate
+opaque-origin form; cross-site and missing-token requests returned 403.
+No operator browser session, real recovery phrase, or private key was inspected.
+Real recovery/login acceptance on both networks remains for the operator.
+
+Operator subsequently confirmed testing successful on 2026-09-05 and authorized commit/push.

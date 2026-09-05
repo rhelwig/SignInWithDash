@@ -15,6 +15,7 @@ import org.siwd.authenticator.ui.theme.SiwdTheme
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         enableEdgeToEdge()
         val initialUrl = intent?.data?.toString()
         setContent {

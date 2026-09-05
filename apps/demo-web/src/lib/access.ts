@@ -67,7 +67,7 @@ export function isSiteOwner(account: AccountRow): boolean {
   return SITE_OWNER_NAMES.some(
     (o) =>
       namesMatch(o, account.dpns_name) ||
-      o.toLowerCase() === account.identity_id.toLowerCase(),
+      o === account.identity_id,
   );
 }
 
@@ -505,7 +505,7 @@ export function evaluateAccountAccess(input: {
     SITE_OWNER_NAMES.some(
       (o) =>
         namesMatch(o, input.dpnsName) ||
-        o.toLowerCase() === input.identityId.toLowerCase(),
+        o === input.identityId,
     )
   ) {
     return { allow: true };

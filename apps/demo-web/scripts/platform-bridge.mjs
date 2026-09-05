@@ -21,7 +21,10 @@ const PORT = Number(process.env.SIWD_PLATFORM_BRIDGE_PORT || 19792);
 const HOST = process.env.SIWD_PLATFORM_BRIDGE_HOST || "127.0.0.1";
 const workerPath = join(dirname(fileURLToPath(import.meta.url)), "platform-worker.mjs");
 
-function runWorker(args, timeoutMs = 90_000) {
+let activeWorkers = 0;
+function runWorker(args, timeoutMs = 30_000) {
+  if (activeWorkers >= 4) return Promise.reject(new Error("Platform busy"));
+  activeWorkers++;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [workerPath, ...args], {
       cwd: join(dirname(workerPath), ".."),
@@ -35,9 +38,11 @@ function runWorker(args, timeoutMs = 90_000) {
       reject(new Error("Platform worker timed out"));
     }, timeoutMs);
     child.stdout.on("data", (d) => {
+      if (stdout.length + d.length > 1024 * 1024) { child.kill("SIGKILL"); return; }
       stdout += d.toString();
     });
     child.stderr.on("data", (d) => {
+      if (stderr.length + d.length > 64 * 1024) { child.kill("SIGKILL"); return; }
       stderr += d.toString();
     });
     child.on("error", (e) => {
@@ -62,7 +67,7 @@ function runWorker(args, timeoutMs = 90_000) {
         );
       }
     });
-  });
+  }).finally(() => { activeWorkers--; });
 }
 
 function send(res, status, obj) {
@@ -100,31 +105,40 @@ const server = createServer(async (req, res) => {
     }
     if (req.method === "GET" && url.pathname === "/resolve") {
       const name = (url.searchParams.get("name") || "").replace(/\.dash$/i, "");
-      if (!name) return send(res, 400, { error: "name required" });
+      if (!/^[a-z0-9-]{1,63}$/i.test(name)) return send(res, 400, { error: "invalid name" });
       const r = await runWorker(["resolve", name.toLowerCase()]);
       return send(res, 200, r);
     }
     if (req.method === "GET" && url.pathname.startsWith("/identity/")) {
       const id = decodeURIComponent(url.pathname.slice("/identity/".length));
-      if (!id) return send(res, 400, { error: "id required" });
+      if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(id)) return send(res, 400, { error: "invalid id" });
       const r = await runWorker(["identity", id]);
       return send(res, 200, r);
     }
     if (req.method === "POST" && url.pathname === "/discover") {
       let raw = "";
-      for await (const chunk of req) raw += chunk;
+      let size = 0;
+      for await (const chunk of req) {
+        size += chunk.length;
+        if (size > 65536) { send(res, 413, { error: "body too large" }); req.resume(); return; }
+        raw += chunk;
+      }
       const body = raw ? JSON.parse(raw) : {};
       const hashes = body.publicKeyHashes || [];
-      if (!hashes.length) return send(res, 400, { error: "publicKeyHashes required" });
+      if (!Array.isArray(hashes) || !hashes.length || hashes.length > 128 || !hashes.every(h => typeof h === "string" && /^[a-f0-9]{40}$/i.test(h))) return send(res, 400, { error: "invalid publicKeyHashes" });
       const r = await runWorker(["discover", hashes.join(",")]);
       return send(res, 200, r);
     }
     send(res, 404, { error: "not found" });
   } catch (e) {
-    send(res, 503, { error: e instanceof Error ? e.message : String(e) });
+    send(res, e instanceof SyntaxError ? 400 : 503, { error: "Platform request unavailable" });
   }
 });
 
+server.requestTimeout = 30000;
+server.headersTimeout = 10000;
+server.keepAliveTimeout = 5000;
+server.maxRequestsPerSocket = 100;
 server.listen(PORT, HOST, () => {
   console.log(`SIWD platform bridge on http://${HOST}:${PORT}`);
   console.log(`worker: ${workerPath}`);

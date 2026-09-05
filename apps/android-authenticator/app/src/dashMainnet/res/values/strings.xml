@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">SIWD Mainnet</string>
+    <string name="network_badge">MAINNET</string>
+    <string name="warning_mainnet">Private experimental mainnet build. Phrase import is wallet-grade; only use it on devices you control.</string>
+</resources>

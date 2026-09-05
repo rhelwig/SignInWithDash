@@ -9,19 +9,19 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Fetches testnet quorum public keys from Dash’s public trusted-context service
- * (same source Evo SDK [WasmTrustedContext.prefetchTestnet] uses):
+ * Fetches quorum public keys from Dash’s public trusted-context service
+ * (same source Evo SDK prefetchTestnet / prefetchMainnet uses).
  *
- * - https://quorums.testnet.networks.dash.org/quorums
- * - https://quorums.testnet.networks.dash.org/previous
- * - https://quorums.testnet.networks.dash.org/masternodes
+ * Base URL is compile-time per product flavor:
+ * - testnet: https://quorums.testnet.networks.dash.org
+ * - mainnet: https://quorums.mainnet.networks.dash.org
  *
  * This lets the SIWD authenticator verify Platform proofs **without** a full
  * Core masternode-list sync and **without** a website proxy.
  */
 object TrustedQuorumContext {
     private const val TAG = "SiwdQuorums"
-    private const val BASE = "https://quorums.testnet.networks.dash.org"
+    private val BASE: String get() = NetworkConfig.quorumBaseUrl
     private const val MAX_AGE_MS = 30 * 60 * 1000L
 
     private val http =
@@ -121,6 +121,13 @@ object TrustedQuorumContext {
     }
 
     private fun parsePrevious(root: JSONObject, into: MutableMap<String, ByteArray>) {
+        val asArray = root.optJSONArray("data")
+        if (asArray != null) {
+            for (i in 0 until asArray.length()) {
+                putQuorum(asArray.getJSONObject(i), into)
+            }
+            return
+        }
         val data = root.optJSONObject("data") ?: return
         val arr = data.optJSONArray("quorums") ?: return
         for (i in 0 until arr.length()) {

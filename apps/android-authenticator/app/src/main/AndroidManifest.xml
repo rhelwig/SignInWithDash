@@ -27,13 +27,6 @@
             android:exported="false"
             android:process=":platform" />
 
-        <!-- adb: am start -n org.siwd.authenticator.testnet.debug/.DebugSelfTestActivity -->
-        <activity
-            android:name=".DebugSelfTestActivity"
-            android:exported="true"
-            android:label="SIWD Self-Test"
-            android:theme="@style/Theme.SiwdAuthenticator" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -51,16 +44,6 @@
                 <data
                     android:scheme="https"
                     android:host="*"
-                    android:pathPrefix="/dash-auth/v1/r/" />
-            </intent-filter>
-            <!-- Explicit public testnet demo -->
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="dashlogin.ronhelwig.com"
                     android:pathPrefix="/dash-auth/v1/r/" />
             </intent-filter>
             <!-- Local loopback demo (dev) -->

@@ -1,14 +1,11 @@
-# Downloads
+# Authenticator download
 
-Place developer artifacts here (served at `/downloads/...`).
+Serve `siwd-authenticator-testnet-release.apk` here. Build both release flavors
+and run `tools/sign-authenticator-release.sh` from the project root, then copy
+the signed testnet artifact from `app/build/outputs/signed/` with mode 0644.
+Never publish a debug APK or the release signing key. APKs are gitignored.
+The former debug download URL redirects to the signed release.
 
-- `siwd-authenticator-testnet-debug.apk` — Android authenticator debug build (testnet only).
-  Built from `apps/android-authenticator` and copied here for local/demo hosting:
-
-```bash
-cp apps/android-authenticator/app/build/outputs/apk/debug/app-debug.apk \
-  apps/demo-web/src/public/downloads/siwd-authenticator-testnet-debug.apk
-```
-
-Prefer building the authenticator from source and reviewing the code before
-importing any recovery phrase. APK files are gitignored.
+The release application has a different Android package from debug builds;
+its private data is separate. Keep your existing recovery backup and import
+into the release app only after synthetic testnet device validation succeeds.

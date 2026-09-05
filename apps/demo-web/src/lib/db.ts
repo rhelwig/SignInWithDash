@@ -288,6 +288,14 @@ function migrate(d: DemoDb) {
     CREATE INDEX IF NOT EXISTS idx_ban_kind_value ON ban_entries(kind, value);
   `);
 
+  d.exec("CREATE TABLE IF NOT EXISTS security_migrations (name TEXT PRIMARY KEY)");
+  if (!d.prepare("SELECT 1 FROM security_migrations WHERE name='hashed-sessions-v1'").get()) {
+    d.transaction(() => {
+      d.exec("DELETE FROM sessions");
+      d.prepare("INSERT INTO security_migrations(name) VALUES ('hashed-sessions-v1')").run();
+    })();
+  }
+
   const sessionCols = d
     .prepare(`PRAGMA table_info(sessions)`)
     .all() as Array<{ name: string }>;

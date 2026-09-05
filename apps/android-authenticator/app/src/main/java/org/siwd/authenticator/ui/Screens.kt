@@ -50,6 +50,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.siwd.authenticator.data.DevFixtures
 import org.siwd.authenticator.data.KnownSitesStore
+import org.siwd.authenticator.data.NetworkConfig
 import org.siwd.authenticator.data.PlatformDiscovery
 import org.siwd.authenticator.data.RequestClient
 import org.siwd.authenticator.data.SecureIdentityStore
@@ -93,8 +94,9 @@ fun HomeScreen(
                 .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("TESTNET ONLY", color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
+        Text(NetworkConfig.badge, color = MaterialTheme.colorScheme.tertiary, fontWeight = FontWeight.Bold)
         Text("Sign in with Dash", style = MaterialTheme.typography.headlineMedium)
+        identityStore.storageError?.let { Text(it, color = MaterialTheme.colorScheme.error) }
         Text(
             "Approve website logins with your Dash identity. Private keys never leave this device.",
             style = MaterialTheme.typography.bodyLarge,
@@ -103,12 +105,20 @@ fun HomeScreen(
         Card {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    "Never enter a mainnet recovery phrase. Testnet only.",
+                    if (NetworkConfig.isMainnet) {
+                        "Private experimental mainnet build. Import only a mainnet phrase you control."
+                    } else {
+                        "Never enter a mainnet recovery phrase. Testnet only."
+                    },
                     color = MaterialTheme.colorScheme.tertiary,
                 )
                 Text(
                     if (stored.isEmpty()) {
-                        "No imported identities yet — import a testnet phrase or use dev fixtures."
+                        if (NetworkConfig.isMainnet) {
+                            "No imported identities yet — import a mainnet phrase."
+                        } else {
+                            "No imported identities yet — import a testnet phrase or use dev fixtures."
+                        }
                     } else {
                         "Loaded identities: ${stored.size} (${
                             stored.joinToString {
@@ -141,10 +151,12 @@ fun HomeScreen(
             Text("Open login request")
         }
         Button(onClick = onImport, modifier = Modifier.fillMaxWidth()) {
-            Text("Import testnet recovery phrase")
+            Text("Import ${NetworkConfig.networkLabel} recovery phrase")
         }
-        TextButton(onClick = onFixtures) {
-            Text("Dev fixtures (alice / bob — local simulator only)")
+        if (!NetworkConfig.isMainnet) {
+            TextButton(onClick = onFixtures) {
+                Text("Dev fixtures (alice / bob — local simulator only)")
+            }
         }
 
         // Known sites — open relying party in the device browser
@@ -204,7 +216,7 @@ fun HomeScreen(
         }
 
         Text(
-            "Identity discovery talks to Dash Platform testnet from this device " +
+            "Identity discovery talks to Dash Platform ${NetworkConfig.networkLabel} from this device " +
                 "(DAPI + public trusted quorum context). No website proxy.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
@@ -222,29 +234,36 @@ fun ImportPhraseScreen(
     var phrase by remember { mutableStateOf("") }
     var passphrase by remember { mutableStateOf("") }
     var hintName by remember { mutableStateOf("") }
-    var showPhrase by remember { mutableStateOf(true) }
+    var showPhrase by remember { mutableStateOf(false) }
     var showPassphrase by remember { mutableStateOf(false) }
     var status by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var busy by remember { mutableStateOf(false) }
+    var foundCount by remember { mutableIntStateOf(0) }
+    var entryReady by remember { mutableStateOf(true) }
+    var discoveryJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val scope = rememberCoroutineScope()
+    val scroll = rememberScrollState()
+    LaunchedEffect(busy, foundCount) { if (busy) scroll.animateScrollTo(scroll.maxValue) }
 
     Column(
         Modifier
             .fillMaxSize()
             .padding(20.dp)
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(scroll),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Text("Import testnet phrase", style = MaterialTheme.typography.headlineSmall)
+        Text("Import ${NetworkConfig.networkLabel} phrase", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "The phrase is used once to discover identities on Dash Platform testnet, " +
-                "then discarded. Only HIGH authentication keys are stored encrypted on device.",
+            "Your recovery phrase stays on this phone. We save only the login keys, encrypted and protected by your screen lock.",
         )
         Text(
-            "Enter the words of the recovery phrase in order, separated by a single space " +
-                "(for example: word1 word2 word3 …). Extra spaces are cleaned up automatically. " +
-                "Use a testnet-only phrase — never mainnet.",
+            "Enter your recovery words in order using the buttons below. " +
+                if (NetworkConfig.isMainnet) {
+                    "Use the mainnet phrase that owns the identity you want to sign in with."
+                } else {
+                    "Use a testnet-only phrase — never mainnet."
+                },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
         )
@@ -254,59 +273,23 @@ fun ImportPhraseScreen(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
         )
-        Text(
-            "Discovery talks to Dash Platform testnet from this device (on-device DAPI + " +
-                "public trusted quorums). Private keys never leave the phone. " +
-                "Enter your DPNS name below if you have one — it helps when hash lookup is flaky.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-        )
         OutlinedTextField(
             value = hintName,
+            enabled = !busy,
             onValueChange = { hintName = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("DPNS name (optional assist)") },
+            label = { Text("Dash name (optional shortcut)") },
             supportingText = {
-                Text("e.g. ronhelwig4test — helps when public-key-hash lookup is flaky")
+                Text("Leave blank to discover identities and their names from the phrase")
             },
             singleLine = true,
         )
-        OutlinedTextField(
-            value = phrase,
-            onValueChange = { phrase = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("BIP-39 recovery phrase") },
-            supportingText = {
-                Text("12 or 24 words, lowercase English BIP-39 words, space-separated")
-            },
-            visualTransformation =
-                if (showPhrase) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions =
-                KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Text,
-                ),
-            minLines = 3,
-        )
-        OutlinedTextField(
-            value = passphrase,
-            onValueChange = { passphrase = it },
-            modifier = Modifier.fillMaxWidth(),
-            label = { Text("BIP-39 passphrase (optional)") },
-            supportingText = {
-                Text("Extra word/password from wallet creation — not part of the 12/24 words")
-            },
-            visualTransformation =
-                if (showPassphrase) VisualTransformation.None else PasswordVisualTransformation(),
-            keyboardOptions =
-                KeyboardOptions(
-                    capitalization = KeyboardCapitalization.None,
-                    autoCorrectEnabled = false,
-                    keyboardType = KeyboardType.Password,
-                ),
-            singleLine = true,
-        )
+        RecoveryWordEntry(phrase = phrase, onChange = { phrase = it }, visible = showPhrase,
+            enabled = !busy, onReadyChange = { entryReady = it })
+        PrivateTextField(value = passphrase, onValueChange = { passphrase = it },
+            visible = showPassphrase, enabled = !busy, modifier = Modifier.fillMaxWidth())
+        Text("Optional extra password from wallet creation; leave blank if none was set.",
+            style = MaterialTheme.typography.bodySmall)
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth(),
@@ -333,26 +316,26 @@ fun ImportPhraseScreen(
             onClick = {
                 busy = true
                 error = null
-                status = "Discovering identities on testnet (on-device DAPI)…"
-                scope.launch {
+                status = "Discovering identities on ${NetworkConfig.networkLabel} (on-device DAPI)…"
+                foundCount = 0
+                discoveryJob = scope.launch {
                     try {
-                        val found =
-                            withContext(Dispatchers.IO) {
-                                discovery.discoverFromMnemonic(
+                        val outcome = discovery.discoverFromMnemonic(
                                     phrase = phrase,
                                     hintName = hintName.trim().ifBlank { null },
                                     passphrase = passphrase,
+                                    onProgress = { progress -> status = progress.message; foundCount = progress.found },
                                 )
-                            }
+                        val found = outcome.identities
                         if (found.isEmpty()) {
                             error =
-                                "No Platform identities found for this phrase (checked identity indexes 0–5). " +
-                                    "Confirm it is a testnet phrase and that an identity already exists " +
-                                    "(create identity/username in testnet DashPay first)."
+                                "No Platform identities found for this phrase (checked identity indexes 0–19). " +
+                                    "Confirm it is a ${NetworkConfig.networkLabel} phrase and that an identity already exists " +
+                                    "(create identity/username in ${NetworkConfig.networkLabel} DashPay first)."
                         } else {
-                            val stored =
+                            val stored = try {
                                 found.map {
-                                    SecureIdentityStore.ofKeys(
+                                    identityStore.wrap(
                                         identityId = it.identityId,
                                         identityIndex = it.identityIndex,
                                         keyId = it.keyId,
@@ -361,15 +344,21 @@ fun ImportPhraseScreen(
                                         publicKey = it.publicKey,
                                     )
                                 }
-                            identityStore.saveAll(stored)
+                            } finally { found.forEach { it.privateKey.fill(0) } }
+                            val replaced = stored.map { it.identityId }.toSet()
+                            identityStore.saveAll(identityStore.list().filter { it.identityId !in replaced } + stored)
                             phrase = ""
                             passphrase = ""
                             status =
                                 "Imported ${stored.size} identity(ies):\n" +
+                                    (if (outcome.complete) "" else "Search ended before checking every position; other identities may remain.\n") +
                                     stored.joinToString("\n") {
                                         "• ${it.fullDpnsNames.joinToString { n -> displayDashName(n) }} (${it.identityId.take(12)}…)"
                                     }
                         }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        status = "Discovery canceled. Your saved identities are unchanged."
+                        throw e
                     } catch (e: Exception) {
                         error = e.message ?: e.toString()
                     } finally {
@@ -377,15 +366,21 @@ fun ImportPhraseScreen(
                     }
                 }
             },
-            enabled = !busy && phrase.isNotBlank(),
+            enabled = !busy && entryReady && phrase.isNotBlank(),
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(if (busy) "Working…" else "Discover & save")
         }
+        if (busy && foundCount > 0) {
+            Button(onClick = { discovery.finishWithFound() }, modifier = Modifier.fillMaxWidth()) {
+                Text("Save $foundCount found identities now")
+            }
+        }
+        if (busy) TextButton(onClick = { discoveryJob?.cancel() }) { Text("Cancel discovery") }
         if (status != null) Text(status!!)
         if (error != null) Text(error!!, color = MaterialTheme.colorScheme.error)
         TextButton(onClick = onBack) { Text("Back") }
-        if (status != null && error == null && !busy) {
+        if (status?.startsWith("Imported ") == true && error == null && !busy) {
             Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
         }
     }
@@ -423,21 +418,23 @@ fun SetupScreen(
                 }
             }
         }
-        Text(
-            "Dev fixtures (local hybrid/simulator sites only — not dashlogin public platform mode):",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
-        )
-        DevFixtures.all.forEach { id ->
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(12.dp)) {
-                    Text(id.label, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                    Text(id.fullDpnsName, fontFamily = FontFamily.Monospace)
-                    Text(
-                        "Synthetic keys — not live testnet identities",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
-                    )
+        if (!NetworkConfig.isMainnet) {
+            Text(
+                "Dev fixtures (local hybrid/simulator sites only — not dashlogin public platform mode):",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+            )
+            DevFixtures.all.forEach { id ->
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(12.dp)) {
+                        Text(id.label, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text(id.fullDpnsName, fontFamily = FontFamily.Monospace)
+                        Text(
+                            "Synthetic keys — not live testnet identities",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
+                        )
+                    }
                 }
             }
         }
@@ -478,13 +475,6 @@ private sealed class SignerChoice {
                 is Fixture -> fixture.keyId
             }
 
-    val privateKey: ByteArray
-        get() =
-            when (this) {
-                is Imported -> hexToBytes(stored.privateKeyHex)
-                is Fixture -> fixture.privateKey
-            }
-
     val label: String
         get() =
             when (this) {
@@ -517,14 +507,18 @@ fun ApproveScreen(
         remember(imported) {
             // Prefer real imported identities first so public platform demos don't default to alice/bob.
             imported.map { SignerChoice.Imported(it) } +
-                DevFixtures.all.map { SignerChoice.Fixture(it) }
+                if (NetworkConfig.isMainnet) {
+                    emptyList()
+                } else {
+                    DevFixtures.all.map { SignerChoice.Fixture(it) }
+                }
         }
     var choice by remember {
         mutableStateOf(
-            choices.firstOrNull { it is SignerChoice.Imported } ?: choices.first(),
+            choices.firstOrNull { it is SignerChoice.Imported } ?: choices.firstOrNull(),
         )
     }
-    var nameInput by remember { mutableStateOf(displayDashName(choice.defaultName)) }
+    var nameInput by remember { mutableStateOf(displayDashName(choice?.defaultName ?: "")) }
     var expanded by remember { mutableStateOf(false) }
     var secondsLeft by remember { mutableIntStateOf(0) }
     var result by remember { mutableStateOf<String?>(null) }
@@ -544,8 +538,13 @@ fun ApproveScreen(
                     client.fetchRequest(capabilityUrl)
                 }
             request = req
+            val selected = choice
             val preferred =
-                sitePrefs.getLastName(req.origin, choice.identityId) ?: choice.defaultName
+                if (selected != null) {
+                    sitePrefs.getLastName(req.origin, selected.identityId) ?: selected.defaultName
+                } else {
+                    ""
+                }
             nameInput = displayDashName(preferred)
             loading = false
         } catch (e: Exception) {
@@ -556,8 +555,9 @@ fun ApproveScreen(
 
     LaunchedEffect(choice, request) {
         val req = request ?: return@LaunchedEffect
+        val selected = choice ?: return@LaunchedEffect
         val preferred =
-            sitePrefs.getLastName(req.origin, choice.identityId) ?: choice.defaultName
+            sitePrefs.getLastName(req.origin, selected.identityId) ?: selected.defaultName
         nameInput = displayDashName(preferred)
     }
 
@@ -576,29 +576,27 @@ fun ApproveScreen(
         }
     }
 
-    fun doSign() {
-        val req = request ?: return
+    fun doSign(req: AuthRequest, selected: SignerChoice, fullName: String, privateKey: ByteArray) {
         busy = true
         result = null
         error = null
-        scope.launch {
+        scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
             try {
-                val fullName = fullNameFromInput(nameInput)
                 val body =
                     withContext(Dispatchers.IO) {
                         client.signAndRespond(
                             authRequest = req,
-                            identityId = choice.identityId,
+                            identityId = selected.identityId,
                             dpnsName = fullName,
-                            keyId = choice.keyId,
-                            privateKey = choice.privateKey,
+                            keyId = selected.keyId,
+                            privateKey = privateKey,
                         )
                     }
-                sitePrefs.setLastName(req.origin, choice.identityId, fullName)
+                sitePrefs.setLastName(req.origin, selected.identityId, fullName)
                 knownSites.recordLogin(
                     origin = req.origin,
                     domain = req.domain,
-                    identityId = choice.identityId,
+                    identityId = selected.identityId,
                     dpnsName = fullName,
                 )
                 result =
@@ -612,13 +610,18 @@ fun ApproveScreen(
                             raw.contains("Name resolves to a different", ignoreCase = true)
                     ) {
                         raw +
-                            "\n\nPublic platform demos need a real testnet DPNS name " +
-                            "imported from your recovery phrase. alice/bob fixtures only " +
-                            "work against a local hybrid/simulator site."
+                            "\n\nPublic platform sites need a real ${NetworkConfig.networkLabel} DPNS name " +
+                            "imported from your recovery phrase." +
+                            if (NetworkConfig.isMainnet) {
+                                ""
+                            } else {
+                                " alice/bob fixtures only work against a local hybrid/simulator site."
+                            }
                     } else {
                         raw
                     }
             } finally {
+                privateKey.fill(0)
                 busy = false
             }
         }
@@ -656,6 +659,7 @@ fun ApproveScreen(
                         Text(req.domain, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                         Text("Action: ${req.action.jsonName()}")
                         Text("Network: ${req.network.jsonName()}")
+                        Text(if (req.bindingPolicy == org.siwd.protocol.BindingPolicy.NAME_BOUND) "Account follows ownership of this Dash name" else "Account belongs to this Dash identity")
                         Text(
                             if (secondsLeft > 0) "Expires in ${secondsLeft}s" else "Expired",
                             color =
@@ -680,10 +684,16 @@ fun ApproveScreen(
                     )
                 }
 
+                if (choice == null) {
+                    Text(
+                        "Import a ${NetworkConfig.networkLabel} identity before approving.",
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 Text("Sign in as", style = MaterialTheme.typography.labelLarge)
                 ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
                     OutlinedTextField(
-                        value = choice.label,
+                        value = choice?.label ?: "No identity imported",
                         onValueChange = {},
                         readOnly = true,
                         trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
@@ -718,20 +728,37 @@ fun ApproveScreen(
 
                 Button(
                     onClick = {
-                        DeviceGate.authenticate(
-                            activity = activity,
-                            onSuccess = { doSign() },
-                            onError = { msg -> error = msg },
-                        )
+                        val approvedRequest = request ?: return@Button
+                        val selected = choice ?: return@Button
+                        val approvedName = fullNameFromInput(nameInput)
+                        busy = true
+                        try {
+                            org.siwd.protocol.RequestParse.validate(approvedRequest, capabilityUrl)
+                            val cipher = if (selected is SignerChoice.Imported) identityStore.decryptionCipher() else null
+                            DeviceGate.authenticate(
+                                activity = activity, cipher = cipher,
+                                onSuccess = { authenticated ->
+                                    try {
+                                        org.siwd.protocol.RequestParse.validate(approvedRequest, capabilityUrl)
+                                        val key = when (selected) {
+                                            is SignerChoice.Imported -> identityStore.decrypt(selected.stored, authenticated ?: error("Authentication missing"))
+                                            is SignerChoice.Fixture -> selected.fixture.privateKey.copyOf()
+                                        }
+                                        doSign(approvedRequest, selected, approvedName, key)
+                                    } catch (e: Exception) { error = e.message; busy = false }
+                                },
+                                onError = { msg -> error = msg; busy = false },
+                            )
+                        } catch (e: Exception) { error = e.message; busy = false }
                     },
-                    enabled = !busy && secondsLeft > 0,
+                    enabled = !busy && secondsLeft > 0 && choice != null,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(if (busy) "Signing…" else "Approve & sign in")
                 }
 
                 Text(
-                    "Unlock with fingerprint if enrolled, otherwise your device PIN/pattern/password.",
+                    "Unlock for this signature. Android 11+ supports device PIN or fingerprint; older Android requires a strong biometric.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                 )

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds may connect to LAN-hosted HTTP relying parties. Release
+     builds continue using src/main's HTTPS-by-default allowlist. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

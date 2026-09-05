@@ -14,3 +14,15 @@ apps/demo-web/data/*.sqlite-*
 local.properties
 **/build/
 !docs/**/build/
+
+# Signed binaries are deployed artifacts, never source.
+*.apk
+*.apk.idsig
+
+# Local credentials and private signing material must never enter source control.
+.secrets/
+*.p12
+*.pfx
+*.jks
+*.keystore
+*.key

@@ -53,6 +53,36 @@ class DebugSelfTestActivity : Activity() {
         setContentView(
             ScrollView(this).apply { addView(out) },
         )
+        intent.getStringExtra("publicName")?.let { name ->
+            check(packageName.endsWith(".testnet.securityaudit"))
+            exec.execute {
+                try {
+                    val platform = OnDevicePlatform.platform()
+                    val doc = platform.names.resolve(name)
+                    log("Public name probe: document found=${doc != null}")
+                    if (doc != null) {
+                        log("Public document field types=" + doc.data.mapValues { it.value?.javaClass?.simpleName })
+                        val records = doc.data["records"] as? Map<*, *>
+                        log("Public record field types=" + records?.mapValues { it.value?.javaClass?.simpleName })
+                    }
+                    val id = OnDevicePlatform.resolveName(name)
+                    log("Public name probe: identity resolved=${id != null}")
+                    if (id != null) {
+                        log("Public name list count=${OnDevicePlatform.usernamesForIdentity(id).size}")
+                        val identity = OnDevicePlatform.getIdentity(id)
+                        log("Public name probe: identity fetched=${identity != null}")
+                        identity?.publicKeys?.forEach { key ->
+                            log("Public key metadata: id=${key.id} purpose=${key.purpose} level=${key.securityLevel} bytes=${key.data.size} disabled=${key.disabledAt != null}")
+                            if (key.id == 0 || key.id == 1) {
+                                val hash = IdentityDerivation.publicKeyHash160(key.data)
+                                log("Public key lookup: key=${key.id} matched=${OnDevicePlatform.getIdentityByPublicKeyHash(hash)?.id?.toString() == id}")
+                            }
+                        }
+                    }
+                } catch (e: Exception) { log("Public name probe failed: ${e.javaClass.simpleName}: ${e.message}") }
+            }
+            return
+        }
         val prefs = getSharedPreferences("siwd_app", 0)
         val proxy =
             intent.getStringExtra("proxy")

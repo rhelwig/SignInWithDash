@@ -6,7 +6,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.siwd.protocol.AuthRequest
 import org.siwd.protocol.CanonicalInput
-import org.siwd.protocol.Network
 import org.siwd.protocol.RequestParse
 import org.siwd.protocol.SiwdSigner
 import org.siwd.protocol.ALGORITHM_ID
@@ -18,9 +17,13 @@ class RequestClient(
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)
+            .callTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(false)
+            .followSslRedirects(false)
             .build(),
 ) {
     fun fetchRequest(capabilityUrl: String): AuthRequest {
+        RequestParse.validateCapabilityUrl(capabilityUrl)
         val req =
             Request.Builder()
                 .url(capabilityUrl)
@@ -28,11 +31,16 @@ class RequestClient(
                 .get()
                 .build()
         http.newCall(req).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
+            val source = resp.body?.source() ?: error("Empty response")
+            require(!source.request(8193)) { "Response too large" }
+            val body = source.readUtf8()
             if (!resp.isSuccessful) {
-                error("Fetch failed ${resp.code}: $body")
+                error("Request fetch failed (HTTP ${resp.code})")
             }
-            return RequestParse.parseAuthRequestJson(body)
+            return RequestParse.parseAuthRequestJson(body).also {
+                RequestParse.validate(it, capabilityUrl)
+                require(it.network == NetworkConfig.network) { "Wrong Dash network" }
+            }
         }
     }
 
@@ -43,9 +51,10 @@ class RequestClient(
         keyId: Int,
         privateKey: ByteArray,
     ): String {
-        require(authRequest.network == Network.TESTNET) {
-            "This app is testnet-only"
+        require(authRequest.network == NetworkConfig.network) {
+            "This app is ${NetworkConfig.networkLabel}-only"
         }
+        RequestParse.validate(authRequest)
         val canon =
             CanonicalInput(
                 network = authRequest.network,
@@ -85,9 +94,11 @@ class RequestClient(
                 .post(json.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
         http.newCall(req).execute().use { resp ->
-            val body = resp.body?.string().orEmpty()
+            val source = resp.body?.source() ?: error("Empty response")
+            require(!source.request(8193)) { "Response too large" }
+            val body = source.readUtf8()
             if (!resp.isSuccessful) {
-                error("Respond failed ${resp.code}: $body")
+                error("Approval rejected (HTTP ${resp.code})")
             }
             return body
         }

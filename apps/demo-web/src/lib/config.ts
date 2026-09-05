@@ -113,3 +113,9 @@ export function absoluteUrl(path: string): string {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
+
+export const SESSION_ABSOLUTE_SECONDS = envInt("SIWD_SESSION_ABSOLUTE_SECONDS", 43200);
+export const SESSION_IDLE_SECONDS = envInt("SIWD_SESSION_IDLE_SECONDS", 1800);
+if (REQUEST_TTL_SECONDS < 30 || REQUEST_TTL_SECONDS > 300 || FINISH_GRACE_SECONDS < 1 || FINISH_GRACE_SECONDS > 60) throw new Error("SIWD request TTL must be 30..300s and finish grace 1..60s");
+if (SESSION_IDLE_SECONDS < 60 || SESSION_ABSOLUTE_SECONDS < SESSION_IDLE_SECONDS || SESSION_ABSOLUTE_SECONDS > 86400) throw new Error("Invalid SIWD session timeouts");
+if (process.env.NODE_ENV === "production" && (!IS_HTTPS || VERIFY_MODE !== "platform" || ENABLE_SIMULATOR || SITE_OWNER_NAMES.length === 0)) throw new Error("Production requires HTTPS, Platform verification, owners, and disabled simulator");

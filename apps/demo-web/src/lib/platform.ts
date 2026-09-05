@@ -1,3 +1,5 @@
+import { withPlatformCapacity } from "./platform-capacity.js";
+import { eligiblePlatformKey } from "../../scripts/platform-key.mjs";
 /**
  * Dash Platform testnet access via an isolated Evo SDK worker process.
  * Keeps WASM network I/O out of the HTTP server process (more reliable).
@@ -88,7 +90,11 @@ async function runViaBridges(
   throw new Error(`All Platform bridges unavailable (${failures.join("; ")})`);
 }
 
-function runWorker(args: string[], timeoutMs = 90_000): Promise<unknown> {
+function runWorker(args: string[], timeoutMs = 30_000): Promise<unknown> {
+  return withPlatformCapacity(() => runWorkerUnbounded(args, timeoutMs));
+}
+
+function runWorkerUnbounded(args: string[], timeoutMs: number): Promise<unknown> {
   // Prefer remote bridges when configured (shared hosting). Multiple URLs let
   // production fail over without changing the authentication protocol.
   if (PLATFORM_BRIDGES.length) {
@@ -144,9 +150,11 @@ function runLocalWorker(args: string[], timeoutMs: number): Promise<unknown> {
     }, timeoutMs);
     child.stdout.on("data", (d) => {
       stdout += d.toString();
+      if (stdout.length > 1_000_000) child.kill("SIGKILL");
     });
     child.stderr.on("data", (d) => {
       stderr += d.toString();
+      if (stderr.length > 65536) child.kill("SIGKILL");
     });
     child.on("error", (e) => {
       clearTimeout(timer);
@@ -220,6 +228,7 @@ export async function resolveDpnsName(
     identityId: string | null;
     name: string;
   };
+  if ((r as { network?: string }).network !== "testnet") throw new Error("Platform network mismatch");
   return { identityId: r.identityId, label };
 }
 
@@ -245,6 +254,7 @@ export async function fetchIdentitySummary(identityId: string): Promise<{
     }>;
     usernames: string[];
   } | null;
+  if (r && ((r as { network?: string }).network !== "testnet" || r.identityId !== identityId)) throw new Error("Platform identity/network mismatch");
   return r;
 }
 
@@ -349,31 +359,12 @@ export async function getPlatformKeyForSiwd(
     if (!key) {
       return { ok: false, code: "key_ineligible", message: "Key id not found" };
     }
-    if (key.disabled) {
-      return { ok: false, code: "key_ineligible", message: "Key disabled" };
-    }
-    const purpose = key.purpose.toUpperCase();
-    const level = key.securityLevel.toUpperCase();
-    if (!purpose.includes("AUTH")) {
-      return { ok: false, code: "key_ineligible", message: "Not auth key" };
-    }
-    if (!level.includes("HIGH")) {
-      return {
-        ok: false,
-        code: "key_ineligible",
-        message: "Only AUTHENTICATION/HIGH allowed",
-      };
-    }
-    if (!key.publicKeyHex) {
-      return {
-        ok: false,
-        code: "platform_unavailable",
-        message: "Could not read public key material",
-      };
+    if (!eligiblePlatformKey(key)) {
+      return { ok: false, code: "key_ineligible", message: "Incomplete, restricted, or ineligible identity key" };
     }
     return {
       ok: true,
-      publicKey: new Uint8Array(Buffer.from(key.publicKeyHex, "hex")),
+      publicKey: new Uint8Array(Buffer.from(key.publicKeyHex!, "hex")),
       keyPurpose: "AUTHENTICATION",
       securityLevel: "HIGH",
       disabled: false,

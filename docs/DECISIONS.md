@@ -464,3 +464,84 @@ SSH keepalives, and configure at least two bridge URLs when independent bridge
 machines are available.
 **Date:** 2026-08-06
 **Status:** Accepted
+
+## D-030 — Enforce request validation and authenticated key use
+
+**Decision:** The Android authenticator validates a strict, bounded request
+schema, matching HTTPS capability/response origins and the displayed domain,
+before approval and again before signing. Signing keys are RSA-wrapped by an
+Android Keystore key requiring per-operation OS authentication. Only public
+metadata is available without that authentication. Release artifacts use a
+persistent signing certificate kept outside source control; debugging entry
+points are absent from release manifests. HTTPS App Links bind each deployed
+origin to its corresponding network flavor and release certificate.
+
+Web verifiers preserve Platform key authorization metadata and reject unknown
+required fields. Optional absent SDK disabledAt/contractBounds retain their
+specified enabled/unbounded meaning. HTTP operations have body, worker and
+execution limits, exact-origin CSRF checks and finite authentication/session
+lifetimes. Explicit replacement of a Latitude controller requires a recent
+signature from the existing controller and revokes previous credentials.
+
+Dashlogin and Latitude run as separate unprivileged OS accounts with private
+state and root-owned deployment trees. The deployment agent remains separate.
+Name transfers remain supported product intent; automatic name-bound account
+handover is deferred pending the policy and testnet work described in
+NAME-TRANSFER-SECURITY-2026-09-05.md.
+
+**Date:** 2026-09-05
+**Status:** Accepted. Synthetic per-operation key authentication and persistence
+passed on the attached phone on 2026-09-05; broader device/recovery coverage and
+F10 implementation remain pending.
+
+## D-031 — Recover login keys by public-key equality, independent of key ID
+
+**Decision:** Name-assisted identity recovery searches standard DIP-13 identity
+positions 0–19 and derivation-key positions 0–31 locally against the fetched
+identity's eligible public keys. The matched Platform key ID is used in SIWD
+signatures; it is not assumed to equal the wallet derivation position. The
+short automatic public-hash scan is retained, and its key matching also uses
+the broader local search. Keys must be active, unbounded ECDSA authentication
+keys with HIGH security level. BIP-39 passphrases use Unicode NFKD.
+
+**Why:** Key IDs are on-chain identifiers, not a verified record of a wallet's
+derivation path. A valid phrase can also refer to positions outside the old
+0–5 range. Explicit name-assisted errors distinguish unavailable names from
+found identities whose login keys do not match the recovery details. This
+does not claim support for arbitrary wallet paths or independently generated
+keys. The operator subsequently recovered the identity successfully using
+the correct saved phrase; the original failure was not caused by this limit.
+
+**Validation:** Four regression tests use independent public-key/seed fixtures
+to cover mismatched IDs/slots, wider searches, wrong seed/network, bounded
+searches and Unicode passphrases. All 12 protocol tests and both release
+builds passed.
+
+**Date:** 2026-09-05
+**Status:** Implemented in version code 3 and retained in 0.1.1 (version code 4).
+The operator confirmed recovery using the correct phrase. Both-network login
+acceptance testing of 0.1.1 remains pending before any commit.
+
+
+## D-032: Private recovery entry and progressive identity discovery
+
+**Date:** 2026-09-05
+
+Recovery words are entered with app-owned letter buttons and local BIP-39
+suggestions, avoiding the system IME. Optional passphrases use password-class
+input with no-learning/no-autofill flags. Neither is saved in UI instance state.
+Discovery publishes results incrementally, supports explicit early completion,
+and keeps found identities available when further scanning fails or times out.
+A name is an optional shortcut; automatic lookup covers bounded wallet positions
+and loads all matching DPNS name pages. Ending network work terminates the
+isolated native service process. Existing identities survive additional imports.
+
+Same-origin browser forms may legitimately have an opaque Origin under the
+no-referrer policy. Both web integrations require same-origin Fetch Metadata
+and a valid CSRF token for this fallback. Foreign origins remain rejected.
+Successful logout returns HTTP 303 to the public homepage.
+
+
+**Status:** Version 0.1.2 accepted by the operator on 2026-09-05 after successful
+testing of both networks and website logout. Commit and remote synchronization
+authorized. F10 and broader device/wallet compatibility coverage remain open.

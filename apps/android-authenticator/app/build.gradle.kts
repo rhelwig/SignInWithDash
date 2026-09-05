@@ -9,14 +9,40 @@ android {
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "org.siwd.authenticator.testnet"
+        applicationId = "org.siwd.authenticator"
         // Android 8.0+ (API 26) — broad sideload coverage without Play Services requirements
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-testnet"
+        versionCode = 5
+        versionName = "0.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("boolean", "TESTNET_ONLY", "true")
+    }
+
+    flavorDimensions += "network"
+    productFlavors {
+        create("dashTestnet") {
+            dimension = "network"
+            applicationIdSuffix = ".testnet"
+            versionName = "0.1.2-testnet"
+            buildConfigField("boolean", "IS_MAINNET", "false")
+            buildConfigField("boolean", "TESTNET_ONLY", "true")
+            buildConfigField(
+                "String",
+                "QUORUM_BASE_URL",
+                "\"https://quorums.testnet.networks.dash.org\"",
+            )
+        }
+        create("dashMainnet") {
+            dimension = "network"
+            versionName = "0.1.2-mainnet-private"
+            buildConfigField("boolean", "IS_MAINNET", "true")
+            buildConfigField("boolean", "TESTNET_ONLY", "false")
+            buildConfigField(
+                "String",
+                "QUORUM_BASE_URL",
+                "\"https://quorums.mainnet.networks.dash.org\"",
+            )
+        }
     }
 
     buildTypes {
@@ -28,7 +54,7 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = if (providers.gradleProperty("siwdSecurityAudit").orNull == "true") ".securityaudit" else ".debug"
             versionNameSuffix = "-debug"
         }
     }

@@ -1,0 +1,20 @@
+{
+  "certificate_sha256": "19a62f569775391f754582bfe643297f8099ffaaf1796295b66e190c72af66f7",
+  "protocol_tests": 12,
+  "artifacts": [
+    {
+      "network": "testnet",
+      "version_code": 4,
+      "version_name": "0.1.1-testnet",
+      "filename": "siwd-authenticator-testnet-release.apk",
+      "sha256": "48d5c0277399a110aedaa62e66fcf3b013eeb5dff2e67bdc781be8ba516f4704"
+    },
+    {
+      "network": "mainnet",
+      "version_code": 4,
+      "version_name": "0.1.1-mainnet-private",
+      "filename": "siwd-authenticator-mainnet-release.apk",
+      "sha256": "576d9befee87aefd6b9d5be830567f12a597d330e5e0706f46588c3f6450f078"
+    }
+  ]
+}

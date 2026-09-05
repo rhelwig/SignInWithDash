@@ -1,3 +1,6 @@
+import { bodyLimit } from "hono/body-limit";
+import { validRequestOrigin, newCsrfToken, csrfCookieName, validCsrf, csrfHtml, securityHeaders } from "./lib/http-security.js";
+import { purgeAuthState } from "./lib/store.js";
 import { getRequestListener, serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Hono } from "hono";
@@ -80,6 +83,34 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = new Hono();
+app.use("*", bodyLimit({ maxSize: 65536, onError: c => c.json({ error: "Request too large" }, 413) }));
+app.use("*", async (c, next) => {
+  purgeAuthState();
+  for (const [key, value] of Object.entries(securityHeaders)) c.header(key, value);
+  if (PUBLIC_ORIGIN.startsWith("https:")) c.header("Strict-Transport-Security", "max-age=31536000");
+  const cookieName = csrfCookieName(cookieSecure());
+  const previous = getCookie(c, cookieName);
+  const token = previous && /^[a-f0-9]{64}$/.test(previous) ? previous : newCsrfToken();
+  if (!["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
+      !["/dash-auth/v1/respond", "/dash-auth/v1/reject", "/dash-auth/v1/platform/discover"].includes(c.req.path)) {
+    if (!validRequestOrigin(new URL(PUBLIC_ORIGIN).origin, c.req.header("origin"), c.req.header("sec-fetch-site"))) return c.json({ error: "Request origin rejected" }, 403);
+    let submitted: unknown = c.req.header("x-csrf-token");
+    if (!submitted && c.req.header("content-type")?.includes("application/x-www-form-urlencoded")) submitted = (await c.req.parseBody())._csrf;
+    if (!validCsrf(previous, submitted)) return c.json({ error: "CSRF validation failed; reload the page" }, 403);
+  }
+  if (c.req.method === "POST" && (c.req.path.startsWith("/access/") && c.req.path !== "/access/invite" || c.req.path === "/me/deactivate")) {
+    const session = sessionFrom(c);
+    if (session && Date.parse(session.created_at) < Date.now() - 300000) return c.json({ error: "Sign in again before changing account access" }, 403);
+  }
+  await next();
+  if (c.res.headers.get("content-type")?.includes("text/html")) {
+    setCookie(c, cookieName, token, { path: "/", secure: cookieSecure(), httpOnly: true, sameSite: "Strict" });
+    const html = csrfHtml(await c.res.text(), token);
+    const headers = new Headers(c.res.headers); headers.delete("content-length");
+    c.res = new Response(html, { status: c.res.status, headers });
+  }
+});
+
 
 function cookieSecure(): boolean {
   // Secure cookies require HTTPS; plain HTTP localhost must omit Secure.
@@ -122,6 +153,9 @@ app.use(
     rewriteRequestPath: (p) => p.replace(/^\/static/, ""),
   }),
 );
+
+app.get("/downloads/siwd-authenticator-testnet-debug.apk", c => c.redirect("/downloads/siwd-authenticator-testnet-release.apk", 302));
+app.get("/.well-known/assetlinks.json", serveStatic({ root: join(__dirname, "public"), rewriteRequestPath: () => "/assetlinks.json" }));
 
 // Developer downloads (APK, etc.) — files live in apps/demo-web/public/downloads
 app.use(
@@ -413,7 +447,7 @@ app.post("/logout", (c) => {
   const s = getSession(sid);
   if (s) endSession(s.id, s.account.id, "logout");
   deleteCookie(c, "siwd_session", { path: "/" });
-  return c.redirect("/");
+  return c.redirect("/", 303);
 });
 
 app.post("/me/revoke-session", async (c) => {
@@ -940,7 +974,7 @@ app.get("/dash-auth/v1/platform/resolve", async (c) => {
           : e && typeof e === "object" && "message" in e
             ? String((e as { message: unknown }).message)
             : `resolve failed: ${String(e)}`;
-    console.error("platform/resolve error", e);
+    console.error("Platform resolution failed");
     return jsonError("platform_unavailable", msg, 503);
   }
 });
@@ -952,7 +986,7 @@ app.get("/dash-auth/v1/platform/health", async (c) => {
   try {
     return c.json(await checkPlatformConnectivity());
   } catch (e) {
-    console.error("platform/health error", e);
+    console.error("Platform health check failed");
     return jsonError(
       "platform_unavailable",
       e instanceof Error ? e.message : "Platform health check failed",
