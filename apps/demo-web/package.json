@@ -31,8 +31,8 @@
     "better-sqlite3": "13.0.3",
     "cookie": "^0.7.2",
     "dotenv": "^17.4.2",
-    "hono": "4.12.34",
-    "nodemailer": "^9.0.3",
+    "hono": "4.13.14",
+    "nodemailer": "^10.2.1",
     "qrcode": "^1.5.4",
     "sql.js": "^1.14.1"
   },
