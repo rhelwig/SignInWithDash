@@ -10,6 +10,6 @@
     "runtime": { "name": "node", "version": ">=24.18.0 <25", "onFail": "error" }
   },
   "dependencies": {
-    "@dashevo/evo-sdk": "4.1.0"
+    "@dashevo/evo-sdk": "5.0.0"
   }
 }

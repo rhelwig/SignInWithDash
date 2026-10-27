@@ -3,9 +3,34 @@ import { test } from 'node:test';
 import { normalizePlatformKey, eligiblePlatformKey } from '../scripts/platform-key.mjs';
 import { withPlatformCapacity } from './lib/platform-capacity.ts';
 import { validRequestOrigin, validCsrf, csrfHtml } from './lib/http-security.ts';
+import { ensureInitialized, IdentityPublicKey } from '@dashevo/evo-sdk';
 const raw = { id: 1, purpose: 0, securityLevel: 2, type: 0, contractBounds: null, data: 'A+MIfg18ifDK6dvNhMH2eW60hkTpOrXaljC3JJZ95pgj' };
 // Public on-chain testnet metadata, not a private key.
 test('accepts the deployed SDK key shape and explicitly omitted optional disabledAt', () => assert.equal(eligiblePlatformKey(normalizePlatformKey(raw)), true));
+test('SDK 5 JSON preserves legacy keys and rejects limited or unknown key formats', async () => {
+  await ensureInitialized();
+  const options = { keyId: 2, purpose: 0, securityLevel: 2, keyType: 0,
+    data: Buffer.from(raw.data, 'base64') };
+  for (const [limits, expected] of [
+    [{}, true], [{ disabledAt: 1 }, false], [{ expiresAt: 1n }, false],
+    [{ expiresAt: 9007199254740993n }, false], [{ totalBudget: 0n }, false],
+    [{ totalBudget: 100n }, false],
+  ]) {
+    const key = new IdentityPublicKey({ ...options, ...limits });
+    try {
+      const json = key.toJSON();
+      // Match the worker -> HTTP bridge -> verifier JSON round trip.
+      const summary = JSON.parse(JSON.stringify(normalizePlatformKey(json)));
+      assert.equal(summary.expiresAt, json.expiresAt ?? null);
+      assert.equal(summary.totalBudget, json.totalBudget ?? null);
+      assert.equal(eligiblePlatformKey(summary), expected);
+    } finally { key.free(); }
+  }
+  for (const patch of [{ $formatVersion: '1' }, { $formatVersion: '2' },
+    { $formatVersion: null }, { expiresAt: 0 }, { expiresAt: 'invalid' }, { totalBudget: 0 }]) {
+    assert.equal(eligiblePlatformKey(normalizePlatformKey({ ...raw, ...patch })), false);
+  }
+});
 test('rejects missing or incorrect authorization metadata', () => {
   for (const patch of [{purpose:undefined},{securityLevel:undefined},{type:undefined},{purpose:1},{securityLevel:0},{disabledAt:1},{disabled:false,disabledAt:1},{disabled:"false"},{contractBounds:{}},{data:'garbage'},{id:-1}])
     assert.equal(eligiblePlatformKey(normalizePlatformKey({...raw,...patch})),false,JSON.stringify(patch));

@@ -545,3 +545,28 @@ Successful logout returns HTTP 303 to the public homepage.
 **Status:** Version 0.1.2 accepted by the operator on 2026-09-05 after successful
 testing of both networks and website logout. Commit and remote synchronization
 authorized. F10 and broader device/wallet compatibility coverage remain open.
+
+## D-033 — Platform 5 preparation with SIWD as default
+
+**Date:** 2026-10-27
+**Status:** Accepted for JavaScript preparation; Android compatibility and live
+testnet rollout acceptance remain pending.
+
+Pin Evo SDK and its locked WASM dependency to 5.0.0 for demo-web and the
+deployment bridge. SIWD remains the default off-chain authentication protocol;
+App Connect is deferred as a separate opt-in integration requiring a threat
+model and interoperability review. No new mainnet enablement or Platform write
+capability is authorized by this SDK migration.
+
+Preserve SDK 5 key format, expiry, and budget metadata across the worker/bridge
+boundary. Reject version 1/unknown-format or usage-limited keys under the
+existing unbounded HIGH ECDSA key policy; do not silently treat an expired or
+budgeted key as an unrestricted login key. Legacy unrestricted keys remain
+supported. Supporting limited keys later requires explicit policy and
+usage-state verification.
+
+Android dependencies remain at this baseline's 4.0.0 pins. Published Android
+4.0.1 availability does not establish PV14 compatibility, and no 5.x Android
+artifact is assumed. See [the October 27 revisit](PLATFORM-5.md) for source
+links, local validation, the Android blocker, and rollout work before the
+expected November 8 activation.

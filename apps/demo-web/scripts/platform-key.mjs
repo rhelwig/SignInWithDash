@@ -18,6 +18,9 @@ export function normalizePlatformKey(key) {
     keyType: enums(key.type, ["ECDSA_SECP256K1", "BLS12_381", "ECDSA_HASH160", "BIP13_SCRIPT_HASH", "EDDSA_25519_HASH160"]),
     disabled,
     contractBounds: key.contractBounds ?? null,
+    formatVersion: key.$formatVersion === undefined ? "0" : key.$formatVersion,
+    totalBudget: key.totalBudget ?? null,
+    expiresAt: key.expiresAt ?? null,
     publicKeyHex: typeof data === "string" ? data.toLowerCase() : null,
   };
 }
@@ -26,5 +29,9 @@ export function eligiblePlatformKey(key) {
     key.purpose === "AUTHENTICATION" && key.securityLevel === "HIGH" &&
     key.keyType === "ECDSA_SECP256K1" && key.disabled === false &&
     Object.hasOwn(key, "contractBounds") && key.contractBounds === null &&
+    // SIWD only accepts unrestricted keys. V1 usage limits need a separate policy
+    // and usage-state verification; do not discard them when bridging SDK JSON.
+    (key.formatVersion === undefined || key.formatVersion === "0") &&
+    key.totalBudget == null && key.expiresAt == null &&
     typeof key.publicKeyHex === "string" && /^(02|03)[0-9a-f]{64}$/.test(key.publicKeyHex);
 }
