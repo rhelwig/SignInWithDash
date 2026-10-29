@@ -24,7 +24,7 @@
   "license": "MIT",
   "dependencies": {
     "@dashevo/evo-sdk": "5.0.0",
-    "@hono/node-server": "^1.14.3",
+    "@hono/node-server": "^2.1.5",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@siwd/protocol": "file:../../packages/protocol",
