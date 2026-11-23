@@ -24,14 +24,14 @@
   "license": "MIT",
   "dependencies": {
     "@dashevo/evo-sdk": "^4.1.0",
-    "@hono/node-server": "^2.1.5",
+    "@hono/node-server": "^2.1.11",
     "@noble/curves": "^2.2.0",
     "@noble/hashes": "^2.2.0",
     "@siwd/protocol": "file:../../packages/protocol",
     "better-sqlite3": "13.0.3",
     "cookie": "^0.7.2",
     "dotenv": "^17.4.2",
-    "hono": "4.13.14",
+    "hono": "^4.13.21",
     "nodemailer": "^10.2.1",
     "qrcode": "^1.5.4",
     "sql.js": "^1.14.1"
